@@ -1,0 +1,483 @@
+//@version=5
+indicator('Friday 13th NQ+ES+YM SET 1-7+BKBrown - v13.5 (Single Input)', overlay = true)
+// =====================================================================
+// 1a. DATA INPUT
+// =====================================================================
+string allData = input.string('', 'All Levels Data', group = 'Data Input', tooltip = 'Paste sections with NQ/ES/YM SET X headers')
+string rawSet3Data = input.string('', 'Set 3', group = 'Data Input', tooltip = 'Format: [TICKER] Time: ... | Mid: ..., Lower: ..., Upper: ...')
+// =====================================================================
+// 1b. GLOBAL
+// =====================================================================
+float avgCharWidthInBars = input.float(1.4, 'Char Width', step=0.1, group='Global', tooltip='Label spacing')
+// =====================================================================
+// 1c. SET 1 (ZONES)
+// =====================================================================
+bool s1_show = input.bool(true, 'Show', group = 'Set 1 (Zones)', inline = 's1_a')
+bool s1_zones = input.bool(true, 'Zones', group = 'Set 1 (Zones)', inline = 's1_a')
+bool s1_labels = input.bool(true, 'Labels', group = 'Set 1 (Zones)', inline = 's1_b')
+string s1_labelSize = input.string('small', 'Size', options = ['tiny','small','normal','large','huge'], group = 'Set 1 (Zones)', inline = 's1_b')
+int s1_labelOffset = input.int(59, 'Offset', group = 'Set 1 (Zones)')
+color s1_labelBG = input.color(color.new(#44a548, 75), 'Label BG', group = 'Set 1 (Zones)')
+color s1_labelText = input.color(color.white, 'Label Text', group = 'Set 1 (Zones)')
+color s1_zoneColor = input.color(#44a548, 'Zone Color', group = 'Set 1 (Zones)')
+int s1_zoneOpacity = input.int(70, 'Zone Opacity', minval = 0, maxval = 100, group = 'Set 1 (Zones)')
+int s1_lineWidth = input.int(2, 'Line Width', minval = 1, maxval = 10, group = 'Set 1 (Zones)')
+string s1_lineStyle = input.string('solid', 'Line Style', options = ['solid','dashed','dotted'], group = 'Set 1 (Zones)')
+// =====================================================================
+// 1d. SET 2 (LEVELS)
+// =====================================================================
+bool s2_show = input.bool(true, 'Show', group = 'Set 2 (Levels)', inline = 's2_a')
+bool s2_zones = input.bool(true, 'Zones', group = 'Set 2 (Levels)', inline = 's2_a')
+bool s2_labels = input.bool(true, 'Labels', group = 'Set 2 (Levels)', inline = 's2_b')
+string s2_labelSize = input.string('small', 'Size', options = ['tiny','small','normal','large','huge'], group = 'Set 2 (Levels)', inline = 's2_b')
+int s2_labelOffset = input.int(50, 'Offset', group = 'Set 2 (Levels)')
+color s2_labelBG = input.color(color.new(#636363, 75), 'Label BG', group = 'Set 2 (Levels)')
+color s2_labelText = input.color(color.white, 'Label Text', group = 'Set 2 (Levels)')
+color s2_lineColor = input.color(#636363, 'Line/Zone Color', group = 'Set 2 (Levels)')
+int s2_zoneOpacity = input.int(70, 'Zone Opacity', minval = 0, maxval = 100, group = 'Set 2 (Levels)')
+int s2_lineWidth = input.int(2, 'Line Width', minval = 1, maxval = 10, group = 'Set 2 (Levels)')
+string s2_lineStyle = input.string('solid', 'Line Style', options = ['solid','dashed','dotted'], group = 'Set 2 (Levels)')
+// =====================================================================
+// 1e. SET 4 (BKBROWN)
+// =====================================================================
+bool s4_show = input.bool(true, 'Show', group = 'Set 4 (BKBrown)', inline = 's4_a')
+bool s4_zones = input.bool(true, 'Zones', group = 'Set 4 (BKBrown)', inline = 's4_a')
+bool s4_labels = input.bool(true, 'Labels', group = 'Set 4 (BKBrown)', inline = 's4_b')
+string s4_labelSize = input.string('small', 'Size', options = ['tiny','small','normal','large','huge'], group = 'Set 4 (BKBrown)', inline = 's4_b')
+int s4_labelOffset = input.int(50, 'Offset', group = 'Set 4 (BKBrown)')
+color s4_labelBG = input.color(color.new(#dbdbdb, 75), 'Label BG', group = 'Set 4 (BKBrown)')
+color s4_labelText = input.color(color.black, 'Label Text', group = 'Set 4 (BKBrown)')
+color s4_lineColor = input.color(#ffffff, 'Line Color', group = 'Set 4 (BKBrown)')
+int s4_lineWidth = input.int(1, 'Line Width', minval = 1, maxval = 10, group = 'Set 4 (BKBrown)')
+string s4_lineStyle = input.string('solid', 'Line Style', options = ['solid','dashed','dotted'], group = 'Set 4 (BKBrown)')
+// =====================================================================
+// 1f. SET 5 (EXTREMES)
+// =====================================================================
+bool s5_show = input.bool(true, 'Show', group = 'Set 5 (Extremes)', inline = 's5_a')
+bool s5_zones = input.bool(true, 'Zones', group = 'Set 5 (Extremes)', inline = 's5_a')
+bool s5_labels = input.bool(true, 'Labels', group = 'Set 5 (Extremes)', inline = 's5_b')
+string s5_labelSize = input.string('small', 'Size', options = ['tiny','small','normal','large','huge'], group = 'Set 5 (Extremes)', inline = 's5_b')
+int s5_labelOffset = input.int(70, 'Offset', group = 'Set 5 (Extremes)')
+color s5_labelBG = input.color(color.new(#2196f3, 75), 'Label BG', group = 'Set 5 (Extremes)')
+color s5_labelText = input.color(color.white, 'Label Text', group = 'Set 5 (Extremes)')
+color s5_zoneColor = input.color(#64b5f6, 'Zone Color', group = 'Set 5 (Extremes)')
+int s5_zoneOpacity = input.int(50, 'Zone Opacity', minval = 0, maxval = 100, group = 'Set 5 (Extremes)')
+int s5_lineWidth = input.int(2, 'Line Width', minval = 1, maxval = 10, group = 'Set 5 (Extremes)')
+string s5_lineStyle = input.string('solid', 'Line Style', options = ['solid','dashed','dotted'], group = 'Set 5 (Extremes)')
+// =====================================================================
+// 1g. SET 6 (SCALPING)
+// =====================================================================
+bool s6_show = input.bool(true, 'Show', group = 'Set 6 (Scalping)', inline = 's6_a')
+bool s6_zones = input.bool(true, 'Zones', group = 'Set 6 (Scalping)', inline = 's6_a')
+bool s6_labels = input.bool(true, 'Labels', group = 'Set 6 (Scalping)', inline = 's6_b')
+string s6_labelSize = input.string('small', 'Size', options = ['tiny','small','normal','large','huge'], group = 'Set 6 (Scalping)', inline = 's6_b')
+int s6_labelOffset = input.int(50, 'Offset', group = 'Set 6 (Scalping)')
+color s6_labelBG = input.color(color.new(#9c27b0, 75), 'Label BG', group = 'Set 6 (Scalping)')
+color s6_labelText = input.color(color.white, 'Label Text', group = 'Set 6 (Scalping)')
+color s6_zoneColor = input.color(#9c27b0, 'Zone Color', group = 'Set 6 (Scalping)')
+int s6_zoneOpacity = input.int(70, 'Zone Opacity', minval = 0, maxval = 100, group = 'Set 6 (Scalping)')
+int s6_lineWidth = input.int(2, 'Line Width', minval = 1, maxval = 10, group = 'Set 6 (Scalping)')
+string s6_lineStyle = input.string('solid', 'Line Style', options = ['solid','dashed','dotted'], group = 'Set 6 (Scalping)')
+// =====================================================================
+// 1h. SET 7 (CONFLUENCE)
+// =====================================================================
+bool s7_show = input.bool(true, 'Show', group = 'Set 7 (Confluence)', inline = 's7_a')
+bool s7_zones = input.bool(true, 'Zones', group = 'Set 7 (Confluence)', inline = 's7_a')
+bool s7_labels = input.bool(true, 'Labels', group = 'Set 7 (Confluence)', inline = 's7_b')
+string s7_labelSize = input.string('tiny', 'Size', options = ['tiny','small','normal','large','huge'], group = 'Set 7 (Confluence)', inline = 's7_b')
+int s7_labelOffset = input.int(50, 'Offset', group = 'Set 7 (Confluence)')
+color s7_labelBG = input.color(color.new(#795548, 75), 'Label BG', group = 'Set 7 (Confluence)')
+color s7_labelText = input.color(color.white, 'Label Text', group = 'Set 7 (Confluence)')
+color s7_zoneColor = input.color(#ff9800, 'Zone Color', group = 'Set 7 (Confluence)')
+int s7_zoneOpacity = input.int(70, 'Zone Opacity', minval = 0, maxval = 100, group = 'Set 7 (Confluence)')
+int s7_lineWidth = input.int(2, 'Line Width', minval = 1, maxval = 10, group = 'Set 7 (Confluence)')
+string s7_lineStyle = input.string('solid', 'Line Style', options = ['solid','dashed','dotted'], group = 'Set 7 (Confluence)')
+// =====================================================================
+// 1i. LIS STYLING
+// =====================================================================
+int lisLabelOffset = input.int(-27, 'Offset', group = 'LIS Styling')
+string lisLabelSize = input.string('small', 'Size', options = ['tiny','small','normal','large','huge'], group = 'LIS Styling')
+color lisLabelBG = input.color(color.new(#ff9800, 50), 'Label BG', group = 'LIS Styling')
+color lisLabelText = input.color(color.white, 'Label Text', group = 'LIS Styling')
+color lisLineColor = input.color(color.new(#ff9800, 30), 'Line/Zone Color', group = 'LIS Styling')
+int lisLineWidth = input.int(3, 'Line Width', minval = 1, maxval = 10, group = 'LIS Styling')
+string lisLineStyle = input.string('solid', 'Line Style', options = ['solid','dashed','dotted'], group = 'LIS Styling')
+// =====================================================================
+// 1j. SET 3 (TIMESTAMP) STYLING
+// =====================================================================
+bool showSet3Levels = input.bool(true, 'Levels', group = 'Set 3 (Timestamp)', inline = 's3_a')
+bool showSet3Labels = input.bool(true, 'Labels', group = 'Set 3 (Timestamp)', inline = 's3_a')
+bool showSet3Timestamp = input.bool(true, 'Timestamp', group = 'Set 3 (Timestamp)', inline = 's3_b')
+string set3Pos = input.string('Bottom Left', 'Position', options = ['Top Left','Top Right','Bottom Left','Bottom Right'], group = 'Set 3 (Timestamp)', inline = 's3_b')
+int set3LabelOffset = input.int(-33, 'Offset', group = 'Set 3 (Timestamp)')
+string set3LabelSize = input.string('small', 'Size', options = ['tiny','small','normal','large','huge'], group = 'Set 3 (Timestamp)')
+color set3LabelBG = input.color(color.new(#ff9800, 75), 'Label BG', group = 'Set 3 (Timestamp)')
+color set3LabelText = input.color(color.white, 'Label Text', group = 'Set 3 (Timestamp)')
+color s3MidColor = input.color(color.new(color.orange, 0), 'Mid Line', group = 'Set 3 (Timestamp)', inline = 's3m')
+int s3MidWidth = input.int(2, 'W', minval = 1, maxval = 10, group = 'Set 3 (Timestamp)', inline = 's3m')
+string s3MidStyle = input.string('dashed', 'Style', options = ['solid','dashed','dotted'], group = 'Set 3 (Timestamp)', inline = 's3m')
+color s3LowerColor = input.color(color.new(#4caf50, 0), 'Lower Line', group = 'Set 3 (Timestamp)', inline = 's3l')
+int s3LowerWidth = input.int(2, 'W', minval = 1, maxval = 10, group = 'Set 3 (Timestamp)', inline = 's3l')
+string s3LowerStyle = input.string('dashed', 'Style', options = ['solid','dashed','dotted'], group = 'Set 3 (Timestamp)', inline = 's3l')
+color s3UpperColor = input.color(color.new(#ff5252, 0), 'Upper Line', group = 'Set 3 (Timestamp)', inline = 's3u')
+int s3UpperWidth = input.int(2, 'W', minval = 1, maxval = 10, group = 'Set 3 (Timestamp)', inline = 's3u')
+string s3UpperStyle = input.string('dashed', 'Style', options = ['solid','dashed','dotted'], group = 'Set 3 (Timestamp)', inline = 's3u')
+// =====================================================================
+// 2. TRACK DRAWING OBJECTS
+// =====================================================================
+var array<line> s1_lines = array.new_line()
+var array<box> s1_boxes = array.new_box()
+var array<label> s1_labelsArr = array.new_label()
+var array<line> s2_lines = array.new_line()
+var array<box> s2_boxes = array.new_box()
+var array<label> s2_labelsArr = array.new_label()
+var array<line> s4_lines = array.new_line()
+var array<label> s4_labelsArr = array.new_label()
+var array<line> s5_lines = array.new_line()
+var array<box> s5_boxes = array.new_box()
+var array<label> s5_labelsArr = array.new_label()
+var array<line> s6_lines = array.new_line()
+var array<box> s6_boxes = array.new_box()
+var array<label> s6_labelsArr = array.new_label()
+var array<line> s7_lines = array.new_line()
+var array<box> s7_boxes = array.new_box()
+var array<label> s7_labelsArr = array.new_label()
+var array<line> lisLines_arr = array.new_line()
+var array<box> lisBoxes_arr = array.new_box()
+var array<label> lisLabels_arr = array.new_label()
+var array<line> s3_lines = array.new_line()
+var array<label> s3_labelsArr = array.new_label()
+var map<string, int> labelOffsets = map.new<string, int>()
+f_stringToPosition(pos) =>
+    pos == 'Top Left' ? position.top_left :
+     pos == 'Top Right' ? position.top_right :
+     pos == 'Bottom Left' ? position.bottom_left :
+     position.bottom_right
+var table timestamp_display_table = na
+// =====================================================================
+// 3. HELPERS
+// =====================================================================
+str_join(string_array, separator) =>
+    string result = ''
+    if array.size(string_array) > 0
+        result := array.get(string_array, 0)
+        if array.size(string_array) > 1
+            for i = 1 to array.size(string_array) - 1 by 1
+                result := result + separator + array.get(string_array, i)
+    result
+
+clear_objects(linesArray, boxesArray, labelsArray) =>
+    for id in linesArray
+        line.delete(id)
+    array.clear(linesArray)
+    for id in boxesArray
+        box.delete(id)
+    array.clear(boxesArray)
+    for id in labelsArray
+        label.delete(id)
+    array.clear(labelsArray)
+
+processAllData(rawData) =>
+    array<string> normalSegments = array.new_string()
+    array<string> lisSegments = array.new_string()
+    if str.length(rawData) > 0
+        allSegments = str.split(rawData, ';')
+        for seg in allSegments
+            if str.contains(seg, '_LIS')
+                array.push(lisSegments, str.replace_all(seg, '_LIS', ''))
+            else
+                array.push(normalSegments, seg)
+    [str_join(normalSegments, ';'), str_join(lisSegments, ';')]
+
+parseSections(rawData) =>
+    string s1 = ''
+    string s2 = ''
+    string s4 = ''
+    string s5 = ''
+    string s6 = ''
+    string s7 = ''
+    if str.length(rawData) > 0
+        cleaned = str.replace_all(rawData, '\r', '')
+        cleaned := str.replace_all(cleaned, 'NQ SET ', 'SET ')
+        cleaned := str.replace_all(cleaned, 'ES SET ', 'SET ')
+        cleaned := str.replace_all(cleaned, 'YM SET ', 'SET ')
+        sections = str.split(cleaned, 'SET ')
+        for section in sections
+            trimmed = str.trim(section)
+            if str.length(trimmed) == 0
+                continue
+            numEnd = 0
+            while numEnd < str.length(trimmed)
+                if na(str.tonumber(str.substring(trimmed, numEnd, numEnd + 1)))
+                    break
+                numEnd := numEnd + 1
+            if numEnd == 0
+                continue
+            setNum = int(str.tonumber(str.substring(trimmed, 0, numEnd)))
+            if na(setNum) or setNum < 1 or setNum > 7
+                continue
+            rest = str.substring(trimmed, numEnd)
+            colonPos = str.pos(rest, ':')
+            searchFrom = na(colonPos) ? 0 : colonPos + 1
+            searchText = str.substring(rest, searchFrom)
+            dataStart = -1
+            for i = 0 to str.length(searchText) - 1
+                if not na(str.tonumber(str.substring(searchText, i, i + 1)))
+                    dataStart := i
+                    break
+            if na(dataStart)
+                continue
+            dataPart = str.trim(str.substring(searchText, dataStart))
+            if str.length(dataPart) == 0
+                continue
+            if str.substring(dataPart, str.length(dataPart) - 1) == ';'
+                dataPart := str.substring(dataPart, 0, str.length(dataPart) - 1)
+            if setNum == 1
+                s1 := s1 + (str.length(s1) > 0 ? ';' : '') + dataPart
+            else if setNum == 2
+                s2 := s2 + (str.length(s2) > 0 ? ';' : '') + dataPart
+            else if setNum == 4
+                s4 := s4 + (str.length(s4) > 0 ? ';' : '') + dataPart
+            else if setNum == 5
+                s5 := s5 + (str.length(s5) > 0 ? ';' : '') + dataPart
+            else if setNum == 6
+                s6 := s6 + (str.length(s6) > 0 ? ';' : '') + dataPart
+            else if setNum == 7
+                s7 := s7 + (str.length(s7) > 0 ? ';' : '') + dataPart
+    [s1, s2, s4, s5, s6, s7]
+
+parseSet3Data(rawData) =>
+    string timestampStr = na
+    float midVal = na
+    float lowerVal = na
+    float upperVal = na
+    if str.length(rawData) > 0
+        parts = str.split(rawData, '|')
+        if array.size(parts) > 0
+            timePart = array.get(parts, 0)
+            timePos = str.pos(timePart, 'Time:')
+            if timePos > -1
+                timestampStr := str.trim(str.substring(timePart, timePos + 5))
+        if array.size(parts) > 1
+            levelsPart = array.get(parts, 1)
+            levelItems = str.split(levelsPart, ',')
+            for item in levelItems
+                keyValue = str.split(item, ':')
+                if array.size(keyValue) > 1
+                    key = str.trim(array.get(keyValue, 0))
+                    valueStr = str.trim(array.get(keyValue, 1))
+                    if key == 'Mid'
+                        midVal := str.tonumber(valueStr)
+                    else if key == 'Lower'
+                        lowerVal := str.tonumber(valueStr)
+                    else if key == 'Upper'
+                        upperVal := str.tonumber(valueStr)
+    [timestampStr, midVal, lowerVal, upperVal]
+// =====================================================================
+// 4. DRAWING FUNCTIONS
+// =====================================================================
+drawZones(rawData, showZones, showLabels, linesArr, boxesArr, labelsArr, lOffsets, zoneColor, zoneOpacity, lineWidth, lineStyleStr, labelOffset, labelSize, labelBG, txtColor, avgCharWidth) =>
+    if (showZones or showLabels) and str.length(rawData) > 0
+        znLineStyle = lineStyleStr == 'dashed' ? line.style_dashed : lineStyleStr == 'dotted' ? line.style_dotted : line.style_solid
+        zones = str.split(rawData, ';')
+        for zoneRaw in zones
+            z = str.trim(zoneRaw)
+            if str.length(z) > 0
+                parts = str.split(z, ',')
+                if array.size(parts) >= 6
+                    pTop = str.tonumber(array.get(parts, 0))
+                    t1v = str.tonumber(str.replace_all(array.get(parts, 1), 'T1=', ''))
+                    t2v = str.tonumber(str.replace_all(array.get(parts, 2), 'T2=', ''))
+                    o1v = str.tonumber(str.replace_all(array.get(parts, 3), 'O1=', ''))
+                    o2v = str.tonumber(str.replace_all(array.get(parts, 4), 'O2=', ''))
+                    pBottom = str.tonumber(array.get(parts, 5))
+                    if not na(pTop) and not na(pBottom)
+                        hi = math.max(pTop, pBottom)
+                        lo = math.min(pTop, pBottom)
+                        midPoint = (hi + lo) / 2
+                        if showZones
+                            if hi - lo < 1
+                                array.push(linesArr, line.new(bar_index - 500, midPoint, bar_index + 500, midPoint, xloc = xloc.bar_index, color = color.new(zoneColor, zoneOpacity), style = znLineStyle, width = lineWidth))
+                            else
+                                array.push(boxesArr, box.new(bar_index - 500, hi, bar_index + 500, lo, bgcolor = color.new(zoneColor, zoneOpacity), border_color = na, xloc = xloc.bar_index))
+                        if showLabels
+                            string priceKey = str.tostring(midPoint)
+                            currentOffset = lOffsets.get(priceKey)
+                            if na(currentOffset)
+                                currentOffset := labelOffset
+                            sumVal = t1v + t2v + o1v + o2v
+                            lineOne = 'T1=' + str.tostring(t1v) + ',T2=' + str.tostring(t2v) + ',O1=' + str.tostring(o1v) + ',O2=' + str.tostring(o2v) + ', = ' + str.tostring(sumVal)
+                            diffInt = math.round(hi - lo)
+                            lineTwo = str.tostring(hi, '#.##') + ' - ' + str.tostring(lo, '#.##') + ' = ' + str.tostring(diffInt)
+                            fullText = lineOne + '\n' + lineTwo
+                            array.push(labelsArr, label.new(bar_index + currentOffset, midPoint, fullText, style = label.style_label_right, size = labelSize, color = labelBG, textcolor = txtColor, xloc = xloc.bar_index))
+                            labelWidthInBars = math.round(str.length(lineOne) * avgCharWidth) + 2
+                            lOffsets.put(priceKey, currentOffset + labelWidthInBars)
+
+drawLevels(rawData, showZones, showLabels, linesArr, boxesArr, labelsArr, lOffsets, lineColor, zoneOpacity, lineWidth, lineStyleStr, labelOffset, labelSize, labelBG, txtColor, avgCharWidth) =>
+    if (showZones or showLabels) and str.length(rawData) > 0
+        lineStyleConst = lineStyleStr == 'dashed' ? line.style_dashed : lineStyleStr == 'dotted' ? line.style_dotted : line.style_solid
+        segments = str.split(rawData, ';')
+        for seg in segments
+            trimmed = str.trim(seg)
+            if str.length(trimmed) > 0
+                if str.contains(trimmed, ',')
+                    parts = str.split(trimmed, ',')
+                    top = str.tonumber(array.get(parts, 0))
+                    bottom = str.tonumber(array.get(parts, 1))
+                    if not na(top) and not na(bottom)
+                        if showZones
+                            array.push(boxesArr, box.new(bar_index - 500, top, bar_index + 500, bottom, bgcolor = color.new(lineColor, zoneOpacity), border_color = na, xloc = xloc.bar_index))
+                        if showLabels
+                            string priceKey = str.tostring((top + bottom) / 2)
+                            currentOffset = lOffsets.get(priceKey)
+                            if na(currentOffset)
+                                currentOffset := labelOffset
+                            lblStr = str.tostring(bottom, '#.##') + ' - ' + str.tostring(top, '#.##')
+                            array.push(labelsArr, label.new(bar_index + currentOffset, (top + bottom) / 2, lblStr, style = label.style_label_up, size = labelSize, color = labelBG, textcolor = txtColor, xloc = xloc.bar_index))
+                            labelWidthInBars = math.round(str.length(lblStr) * avgCharWidth) + 2
+                            lOffsets.put(priceKey, currentOffset + labelWidthInBars)
+                else
+                    level = str.tonumber(trimmed)
+                    if not na(level)
+                        if showZones
+                            array.push(linesArr, line.new(bar_index - 500, level, bar_index + 500, level, xloc = xloc.bar_index, color = lineColor, style = lineStyleConst, width = lineWidth))
+                        if showLabels
+                            string priceKey = str.tostring(level)
+                            currentOffset = lOffsets.get(priceKey)
+                            if na(currentOffset)
+                                currentOffset := labelOffset
+                            lblStr = str.tostring(level, '#.##')
+                            array.push(labelsArr, label.new(bar_index + currentOffset, level, lblStr, style = label.style_label_up, size = labelSize, color = labelBG, textcolor = txtColor, xloc = xloc.bar_index))
+                            labelWidthInBars = math.round(str.length(lblStr) * avgCharWidth) + 2
+                            lOffsets.put(priceKey, currentOffset + labelWidthInBars)
+
+drawBKBrown(rawData, showZones, showLabels, linesArr, labelsArr, lOffsets, lineColor, lineWidth, lineStyleStr, labelOffset, labelSize, labelBG, txtColor, avgCharWidth) =>
+    if (showZones or showLabels) and str.length(rawData) > 0
+        lineStyleConst = lineStyleStr == 'dashed' ? line.style_dashed : lineStyleStr == 'dotted' ? line.style_dotted : line.style_solid
+        segments = str.split(rawData, ';')
+        for seg in segments
+            trimmed = str.trim(seg)
+            if str.length(trimmed) > 0
+                string priceStr = trimmed
+                string labelStr = trimmed
+                parts = str.split(trimmed, '-')
+                if array.size(parts) >= 2
+                    priceStr := array.get(parts, 0)
+                    labelStr := str_join(array.slice(parts, 1), '-')
+                float level = str.tonumber(priceStr)
+                if not na(level)
+                    if showZones
+                        array.push(linesArr, line.new(bar_index - 500, level, bar_index + 500, level, xloc = xloc.bar_index, color = lineColor, style = lineStyleConst, width = lineWidth))
+                    if showLabels
+                        string priceKey = str.tostring(level)
+                        currentOffset = lOffsets.get(priceKey)
+                        if na(currentOffset)
+                            currentOffset := labelOffset
+                        array.push(labelsArr, label.new(bar_index + currentOffset, level, labelStr, style = label.style_label_up, size = labelSize, color = labelBG, textcolor = txtColor, xloc = xloc.bar_index))
+                        labelWidthInBars = math.round(str.length(labelStr) * avgCharWidth) + 2
+                        lOffsets.put(priceKey, currentOffset + labelWidthInBars)
+
+drawLIS(rawData, linesArr, boxesArr, labelsArr, lOffsets, lineColor, lineWidth, lineStyleStr, labelOffset, labelSize, labelBG, txtColor, avgCharWidth) =>
+    if str.length(rawData) > 0
+        lisLineStyleConst = lineStyleStr == 'dashed' ? line.style_dashed : lineStyleStr == 'dotted' ? line.style_dotted : line.style_solid
+        segments = str.split(rawData, ';')
+        for seg in segments
+            trimmed = str.trim(seg)
+            if str.length(trimmed) > 0
+                if str.contains(trimmed, ',')
+                    parts = str.split(trimmed, ',')
+                    top = str.tonumber(array.get(parts, 0))
+                    bottom = str.tonumber(array.get(parts, 1))
+                    if not na(top) and not na(bottom)
+                        midPoint = (top + bottom) / 2
+                        array.push(boxesArr, box.new(bar_index - 500, top, bar_index + 500, bottom, bgcolor = color.new(lineColor, 80), border_color = na, xloc = xloc.bar_index))
+                        string priceKey = str.tostring(midPoint)
+                        currentOffset = lOffsets.get(priceKey)
+                        if na(currentOffset)
+                            currentOffset := labelOffset
+                        array.push(labelsArr, label.new(bar_index + currentOffset, midPoint, 'LIS', style = label.style_label_up, size = labelSize, color = labelBG, textcolor = txtColor, xloc = xloc.bar_index))
+                        labelWidthInBars = math.round(str.length('LIS') * avgCharWidth) + 2
+                        lOffsets.put(priceKey, currentOffset + labelWidthInBars)
+                else
+                    level = str.tonumber(trimmed)
+                    if not na(level)
+                        array.push(linesArr, line.new(bar_index - 500, level, bar_index + 500, level, color = lineColor, style = lisLineStyleConst, width = lineWidth, xloc = xloc.bar_index))
+                        string priceKey = str.tostring(level)
+                        currentOffset = lOffsets.get(priceKey)
+                        if na(currentOffset)
+                            currentOffset := labelOffset
+                        array.push(labelsArr, label.new(bar_index + currentOffset, level, 'LIS', style = label.style_label_up, size = labelSize, color = labelBG, textcolor = txtColor, xloc = xloc.bar_index))
+                        labelWidthInBars = math.round(str.length('LIS') * avgCharWidth) + 2
+                        lOffsets.put(priceKey, currentOffset + labelWidthInBars)
+// =====================================================================
+// 5. EXECUTION
+// =====================================================================
+if barstate.islast
+    map.clear(labelOffsets)
+    clear_objects(s1_lines, s1_boxes, s1_labelsArr)
+    clear_objects(s2_lines, s2_boxes, s2_labelsArr)
+    clear_objects(s4_lines, array.new_box(), s4_labelsArr)
+    clear_objects(s5_lines, s5_boxes, s5_labelsArr)
+    clear_objects(s6_lines, s6_boxes, s6_labelsArr)
+    clear_objects(s7_lines, s7_boxes, s7_labelsArr)
+    clear_objects(lisLines_arr, lisBoxes_arr, lisLabels_arr)
+    clear_objects(s3_lines, array.new_box(), s3_labelsArr)
+    if na(timestamp_display_table)
+        timestamp_display_table := table.new(f_stringToPosition(set3Pos), 1, 1)
+    else
+        table.set_position(timestamp_display_table, f_stringToPosition(set3Pos))
+    table.clear(timestamp_display_table, 0, 0, 0, 0)
+    [s1_raw, s2_raw, s4_raw, s5_raw, s6_raw, s7_raw] = parseSections(allData)
+    [s1_data, s1_lis] = processAllData(s1_raw)
+    [s2_data, s2_lis] = processAllData(s2_raw)
+    [s4_data, s4_lis] = processAllData(s4_raw)
+    [s5_data, s5_lis] = processAllData(s5_raw)
+    [s6_data, s6_lis] = processAllData(s6_raw)
+    [s7_data, s7_lis] = processAllData(s7_raw)
+    array<string> allLis = array.new_string()
+    if str.length(s1_lis) > 0
+        array.push(allLis, s1_lis)
+    if str.length(s2_lis) > 0
+        array.push(allLis, s2_lis)
+    if str.length(s4_lis) > 0
+        array.push(allLis, s4_lis)
+    if str.length(s5_lis) > 0
+        array.push(allLis, s5_lis)
+    if str.length(s6_lis) > 0
+        array.push(allLis, s6_lis)
+    if str.length(s7_lis) > 0
+        array.push(allLis, s7_lis)
+    string combinedLis = str_join(allLis, ';')
+    if s1_show
+        drawZones(s1_data, s1_zones, s1_labels, s1_lines, s1_boxes, s1_labelsArr, labelOffsets, s1_zoneColor, s1_zoneOpacity, s1_lineWidth, s1_lineStyle, s1_labelOffset, s1_labelSize, s1_labelBG, s1_labelText, avgCharWidthInBars)
+    if s2_show
+        drawLevels(s2_data, s2_zones, s2_labels, s2_lines, s2_boxes, s2_labelsArr, labelOffsets, s2_lineColor, s2_zoneOpacity, s2_lineWidth, s2_lineStyle, s2_labelOffset, s2_labelSize, s2_labelBG, s2_labelText, avgCharWidthInBars)
+    if s4_show
+        drawBKBrown(s4_data, s4_zones, s4_labels, s4_lines, s4_labelsArr, labelOffsets, s4_lineColor, s4_lineWidth, s4_lineStyle, s4_labelOffset, s4_labelSize, s4_labelBG, s4_labelText, avgCharWidthInBars)
+    if s5_show
+        drawZones(s5_data, s5_zones, s5_labels, s5_lines, s5_boxes, s5_labelsArr, labelOffsets, s5_zoneColor, s5_zoneOpacity, s5_lineWidth, s5_lineStyle, s5_labelOffset, s5_labelSize, s5_labelBG, s5_labelText, avgCharWidthInBars)
+    if s6_show
+        drawZones(s6_data, s6_zones, s6_labels, s6_lines, s6_boxes, s6_labelsArr, labelOffsets, s6_zoneColor, s6_zoneOpacity, s6_lineWidth, s6_lineStyle, s6_labelOffset, s6_labelSize, s6_labelBG, s6_labelText, avgCharWidthInBars)
+    if s7_show
+        drawZones(s7_data, s7_zones, s7_labels, s7_lines, s7_boxes, s7_labelsArr, labelOffsets, s7_zoneColor, s7_zoneOpacity, s7_lineWidth, s7_lineStyle, s7_labelOffset, s7_labelSize, s7_labelBG, s7_labelText, avgCharWidthInBars)
+    drawLIS(combinedLis, lisLines_arr, lisBoxes_arr, lisLabels_arr, labelOffsets, lisLineColor, lisLineWidth, lisLineStyle, lisLabelOffset, lisLabelSize, lisLabelBG, lisLabelText, avgCharWidthInBars)
+    [ts, mid, low, up] = parseSet3Data(rawSet3Data)
+    if showSet3Timestamp and not na(ts)
+        table.cell(timestamp_display_table, 0, 0, 'Timestamp: ' + ts, text_color = set3LabelText, text_size = set3LabelSize)
+    if showSet3Levels
+        s3mSt = s3MidStyle == 'dashed' ? line.style_dashed : s3MidStyle == 'dotted' ? line.style_dotted : line.style_solid
+        s3lSt = s3LowerStyle == 'dashed' ? line.style_dashed : s3LowerStyle == 'dotted' ? line.style_dotted : line.style_solid
+        s3uSt = s3UpperStyle == 'dashed' ? line.style_dashed : s3UpperStyle == 'dotted' ? line.style_dotted : line.style_solid
+        if not na(mid)
+            array.push(s3_lines, line.new(bar_index - 500, mid, bar_index + 500, mid, xloc = xloc.bar_index, color = s3MidColor, style = s3mSt, width = s3MidWidth))
+            if showSet3Labels
+                array.push(s3_labelsArr, label.new(bar_index + set3LabelOffset, mid, 'Mid', style = label.style_label_right, size = set3LabelSize, color = set3LabelBG, textcolor = set3LabelText, xloc = xloc.bar_index))
+        if not na(low)
+            array.push(s3_lines, line.new(bar_index - 500, low, bar_index + 500, low, xloc = xloc.bar_index, color = s3LowerColor, style = s3lSt, width = s3LowerWidth))
+            if showSet3Labels
+                array.push(s3_labelsArr, label.new(bar_index + set3LabelOffset, low, 'Lower', style = label.style_label_right, size = set3LabelSize, color = set3LabelBG, textcolor = set3LabelText, xloc = xloc.bar_index))
+        if not na(up)
+            array.push(s3_lines, line.new(bar_index - 500, up, bar_index + 500, up, xloc = xloc.bar_index, color = s3UpperColor, style = s3uSt, width = s3UpperWidth))
+            if showSet3Labels
+                array.push(s3_labelsArr, label.new(bar_index + set3LabelOffset, up, 'Upper', style = label.style_label_right, size = set3LabelSize, color = set3LabelBG, textcolor = set3LabelText, xloc = xloc.bar_index))
