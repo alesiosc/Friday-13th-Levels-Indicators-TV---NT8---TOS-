@@ -1,0 +1,56 @@
+__**Intraday Context for QQQ | 09:55 EST - 2026-01-13**__
+
+## __***Neutral***__
+
+__**Overall Sentiment:**__
+Market sentiment is currently neutral. Net GEX saw a moderate change with current value at 491.41M (+209.54M), indicating a shift in dealer gamma exposure. Net DEX is at 44.58B (+5.45B), suggesting changes in downside hedge depth.
+
+__**Gamma Summary (Chronological Analysis):**__
+**— Net GEX —**
+Now: **491.41M (+209.54M)**
+Since (13:06): 281.87M
+Impact: A significant gamma increase (+210M) reinforces the positive gamma environment, providing price stabilization and reducing volatility risk.
+
+**— Net DEX —**
+Now: **44.58B (+5.45B)**
+Since (13:06): 39.13B
+Impact: A significant increase (+5.5B) in delta exposure reflects expanded hedge coverage with high downside protection (44.6B total), enhancing market resilience.
+
+**— Top 3 Volume Strikes —**
+1: Call, 630 (**~26,085 NQ**) | 43.11K
+2: Call, 629 (**~26,043 NQ**) | 36.10K
+3: Call, 628 (**~26,002 NQ**) | 27.40K
+
+**— TOP GEX STRIKE CHANGE —**
+**Positive:**
+1: 630 (**~26,085 NQ**) | 20.26M (17.06%)
+2: 640 (**~26,499 NQ**) | 10.90M (10.11%)
+3: 629 (**~26,043 NQ**) | 10.09M (26.20%)
+**Negative:**
+1: 626 (**~25,919 NQ**) | -659.2K (-6.04%)
+2: 604.78 (**~25,040 NQ**) | -134.1K (-22.45%)
+3: 541 (**~22,400 NQ**) | -9.91K (-1.22%)
+
+**— P/C Volume Ratio —**
+Now: **N/A (Unchanged)**
+Since (13:06): 0.00
+Impact: P/C ratio stable at 1.00 is balanced, reflecting neutral market expectations.
+
+**— HVL (Gamma Flip) —**
+Now: **624 (~25,836 NQ)** (unchanged)
+Since (13:06): 624
+
+__**Options Flow:**__
+Market makers are helping to stabilize prices - expect calmer trading with less wild swings. More calls than puts being traded (P/C N/A) with 3 call strikes leading - traders are bullish and expecting upside. Big money is shifting positions at key price levels - watch these strikes as potential support or resistance.
+
+__**Confluence Levels:**__
+**Strong Confluence:**
+
+• 630 QQQ (**~26,085 NQ**): Top 1 Volume + Top 1 Positive GEX + Call Resistance + Call Resistance (0DTE)
+• 629 QQQ (**~26,043 NQ**): Top 2 Volume + Top 3 Positive GEX
+• 626 QQQ (**~25,919 NQ**): Top 1 Negative GEX + Put Support (0DTE)
+
+**GAMMA CONDITION:**
+Currently Positive
+
+## __***Neutral***__

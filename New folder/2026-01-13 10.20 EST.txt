@@ -1,0 +1,55 @@
+__**Intraday Context for QQQ | 10:18 EST - 2026-01-13**__
+
+## __***Neutral***__
+
+__**Overall Sentiment:**__
+Market sentiment is currently neutral. Net GEX saw a moderate change with current value at 144.15M (-340.80M), indicating a shift in dealer gamma exposure. Net DEX is at 36.24B (-8.32B), suggesting changes in downside hedge depth.
+
+__**Gamma Summary (Chronological Analysis):**__
+**— Net GEX —**
+Now: **144.15M (-340.80M)**
+Since (09:55): 484.96M
+Impact: Despite a significant gamma decline (-341M), overall positive gamma (144M) continues to dampen volatility.
+
+**— Net DEX —**
+Now: **36.24B (-8.32B)**
+Since (09:55): 44.56B
+Impact: A significant reduction (-8.3B) in delta exposure indicates trimmed hedges, leaving high downside protection (36.2B remaining).
+
+**— Top 3 Volume Strikes —**
+1: Call, 630 (**~26,108 NQ**) | 115.86K
+2: Call, 629 (**~26,066 NQ**) | 97.33K
+3: Put, 627 (**~25,983 NQ**) | 90.69K
+
+**— TOP GEX STRIKE CHANGE —**
+**Positive:**
+1: 604.78 (**~25,063 NQ**) | 173.78K (37.52%)
+2: 541 (**~22,419 NQ**) | 15.77K (1.96%)
+3: 509.78 (**~21,126 NQ**) | 15.37K (2.49%)
+**Negative:**
+1: 630 (**~26,108 NQ**) | -23.62M (-16.87%)
+2: 640 (**~26,522 NQ**) | -22.64M (-18.98%)
+3: 641 (**~26,564 NQ**) | -20.39M (-31.06%)
+
+**— P/C Volume Ratio —**
+Now: **1.06 (by 0.05)**
+Since (09:55): 1.01
+Impact: P/C ratio rising at 1.06 is balanced, reflecting neutral market expectations.
+
+**— HVL (Gamma Flip) —**
+Now: **627 (~25,983 NQ)** (unchanged)
+Since (09:55): 627
+
+__**Options Flow:**__
+Market makers are helping to stabilize prices - expect calmer trading with less wild swings. More puts than calls being traded (P/C 1.06), showing traders are cautious and hedging against drops. Big money is shifting positions at key price levels - watch these strikes as potential support or resistance.
+
+__**Confluence Levels:**__
+**Strong Confluence:**
+
+• 630 QQQ (**~26,108 NQ**): Top 1 Volume + Top 1 Negative GEX + Call Resistance + Call Resistance (0DTE)
+• 627 QQQ (**~25,983 NQ**): Top 3 Volume + HVL (0DTE)
+
+**GAMMA CONDITION:**
+Currently Positive
+
+## __***Neutral***__

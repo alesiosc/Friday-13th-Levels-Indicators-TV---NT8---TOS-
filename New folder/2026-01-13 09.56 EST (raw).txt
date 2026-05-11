@@ -1,0 +1,37 @@
+Liquidity Summary for QQQ | 2026-01-13 09:35 EST
+GAMMA CONDITION
+Gamma Condition: Currently Positive with QQQ in a Call Dominated Environment. 
+NET GEX / DEX
+GEX: Since 07:45 Net GEX has Increased by 208.4M (74.86%) from 278.4M and is now 486.8M
+DEX: Since 07:45 Net DEX has Increased by 5.46B (13.97%) from 39.1B and is now 44.57B
+VOLUME
+P/C Volume Ratio: P/C Volume Ratio is now 0.69
+Call Volume since Open is 187229 
+Put Volume since Open is 128826 
+Top 5 Volume Strikes:
+S1: Call, 630 | 40.28K
+S2: Call, 629 | 31.2K
+S3: Call, 628 | 30.95K
+S4: Put, 627 | 22.22K
+S5: Put, 626 | 21.59K
+PRIMARY LEVELS
+Call Resistance Increased by 3 points to 630, which is 1.31 points above Spot Price
+Call Resistance 0DTE remains Unchanged at 630, which is 1.31 points above Spot Price
+Put Support remains Unchanged at 610, which is 18.69 points below Spot Price
+Put Support 0DTE Increased by 2 points to 626, which is 2.69 points below Spot Price
+GAMMA FLIP (HVL)
+High Vol Level remains Unchanged at 624, which is 4.69 points below Spot Price
+High Vol Level 0DTE remains Unchanged at 627, which is 1.69 points below Spot Price
+TOP GEX STRIKE CHANGE
+Positive:
+S1: 630 | 21.18M (17.84%)
+S2: 640 | 11.4M (10.57%)
+S3: 629 | 10.69M (27.77%)
+S4: 610 | 10.42M (11.32%)
+S5: 641 | 10.06M (18.09%)
+Negative:
+S1: 626 | -659.2K (-6.04%)
+S2: 604.78 | -134.1K (-22.45%)
+S3: 541 | -9.91K (-1.22%)
+S4: 509.78 | -9.3K (-1.49%)
+S5: 564 | -9.13K (-1.10%)

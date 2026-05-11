@@ -1,0 +1,27 @@
+Intraday Liquidity Summary
+Displays the intraday summary of the change in Liquidity, Gamma Levels, Volume and Gamma Condition.
+Hang tight! Market data isn’t ready yet. The market might be closed or updates are still on the way..
+GEX Difference VS EOD
+Displays the intraday Net GEX change relative to the previous day close.
+Total Runs: 3
+Current Run: 2
+GEX Difference VS Prev. Snapshot
+Displays the intraday Net GEX change relative to the previous intraday snapshot.
+Total Runs: 3
+Current Run: 2
+Net GEX 0DTE
+Displays the intraday Net GEX 0DTE. It shows the Net Gamma Exposure Chart for 0DTE Options or next weekly expirations.
+Total Runs: 3
+Current Run: 2
+Net GEX All Expirations
+Displays the intraday Net GEX Chart. It shows the Net Gamma Exposure Chart looking at All Expirations.
+Total Runs: 3
+Current Run: 2
+Volume 0DTE
+Displays the intraday Volume change for 0DTE Options or next Weekly Expirations.
+Hang tight! Market data isn’t ready yet. The market might be closed or updates are still on the way..
+TradingView Levels Intraday
+Access the MenthorQ Key Gamma Levels on TradingView.
+$QQQ: Call Resistance, 630, Put Support, 610, HVL, 624, 1D Min, 621.97, 1D Max, 635.41, Call Resistance 0DTE, 630, Put Support 0DTE, 626, HVL 0DTE, 627, Gamma Wall 0DTE, 630, GEX 1, 635, GEX 2, 625, GEX 3, 633, GEX 4, 629, GEX 5, 632, GEX 6, 640, GEX 7, 620, GEX 8, 637, GEX 9, 641, GEX 10, 636
+Total Runs: 3
+Current Run: 2
