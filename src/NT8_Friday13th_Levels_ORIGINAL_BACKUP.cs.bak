@@ -1,0 +1,1073 @@
+﻿#region Using declarations
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+using System.Linq;
+using System.Windows.Media;
+using System.Xml.Serialization;
+using System.IO;
+using NinjaTrader.Cbi;
+using NinjaTrader.Gui;
+using NinjaTrader.Gui.Chart;
+using NinjaTrader.Gui.Tools;
+using NinjaTrader.Data;
+using NinjaTrader.NinjaScript;
+using NinjaTrader.NinjaScript.DrawingTools;
+using NinjaTrader.NinjaScript.Indicators;
+#endregion
+
+namespace NinjaTrader.NinjaScript.Indicators
+{
+    
+
+    public class NT8_Friday13th_Levels : Indicator
+    {
+        private List<string> drawingTags;
+        private Dictionary<string, int> labelOffsets;
+
+        // Parsed data fields populated by parser
+        private string parsedS1, parsedS2, parsedS4, parsedS5, parsedS6, parsedS7;
+        private string parsedLIS;
+        private string parsedTimestamp;
+        private double? parsedMid, parsedLower, parsedUpper;
+        // =====================================================================
+        // Resolve chart instrument to canonical root symbol
+        // =====================================================================
+        private string GetChartRootSymbol()
+        {
+            string raw    = Instrument?.MasterInstrument?.Name ?? string.Empty;
+            string ticker = raw.Trim().ToUpper();
+            if (ticker.StartsWith("MNQ")) return "NQ";
+            if (ticker.StartsWith("MES")) return "ES";
+            if (ticker.StartsWith("MYM")) return "YM";
+            if (ticker.StartsWith("NQ"))  return "NQ";
+            if (ticker.StartsWith("ES"))  return "ES";
+            if (ticker.StartsWith("YM"))  return "YM";
+            return null;
+        }
+
+        // =====================================================================
+        // State change
+        // =====================================================================
+        protected override void OnStateChange()
+        {
+            if (State == State.SetDefaults)
+            {
+                Description              = "NT8 - FRIDAY 13th Levels | Single AllData input, auto-parse NQ/ES/YM SET 1-7 headers, auto-detect chart instrument.";
+                Name                     = "NT8 - FRIDAY 13th Levels";
+                Calculate                = Calculate.OnBarClose;
+                IsOverlay                = true;
+                DisplayInDataBox         = false;
+                DrawOnPricePanel         = true;
+                ScaleJustification       = ScaleJustification.Right;
+                IsSuspendedWhileInactive = true;
+                ZOrder                   = -1;
+
+                AllData          = "";
+                Set3Data         = "";
+                FullLevelsFilePath = @"C:/levels.txt";
+                AutoLoadFromFile   = false;
+                AvgCharWidthInBars = 1.4f;
+
+                // Show/hide
+                S1ShowZones = true;  S1ShowLabels = true;
+                S2ShowZones = true;  S2ShowLabels = true;
+                S3ShowKeyLevels = true; S3ShowKeyLabels = true; S3ShowTimestamp = true;
+                S4ShowZones = true;  S4ShowLabels = true;
+                S5ShowZones = true;  S5ShowLabels = true;
+                S6ShowZones = true;  S6ShowLabels = true;
+                S7ShowZones = true;  S7ShowLabels = true;
+                // S1 defaults
+                S1LabelOffset = 59; S1LabelSize = 8;
+                S1LabelBG = new SolidColorBrush(Color.FromArgb(75, 0x44, 0xa5, 0x48));
+                S1LabelTextColor = Brushes.White;
+                S1LineColor = new SolidColorBrush(Color.FromArgb(255, 0x44, 0xa5, 0x48));
+                S1ZoneColor = new SolidColorBrush(Color.FromArgb(255, 0x44, 0xa5, 0x48));
+                S1ZoneOpacity = 70; S1LineWidth = 2; S1LineStyle = DashStyleHelper.Solid;
+
+                // S2 defaults
+                S2LabelOffset = 50; S2LabelSize = 8;
+                S2LabelBG = new SolidColorBrush(Color.FromArgb(75, 0x63, 0x63, 0x63));
+                S2LabelTextColor = Brushes.White;
+                S2LineColor = new SolidColorBrush(Color.FromArgb(255, 0x63, 0x63, 0x63));
+                S2ZoneOpacity = 70; S2LineWidth = 2; S2LineStyle = DashStyleHelper.Solid;
+
+                // S3 defaults
+                S3LabelOffset = 33; S3LabelSize = 8;
+                S3LabelBG = new SolidColorBrush(Color.FromArgb(75, 0xff, 0x98, 0x00));
+                S3LabelTextColor = Brushes.White;
+                S3MidColor   = Brushes.Orange;    S3MidWidth = 2;   S3MidStyle = DashStyleHelper.Dash;
+                S3LowerColor = Brushes.Lime;     S3LowerWidth = 2; S3LowerStyle = DashStyleHelper.Dash;
+                S3UpperColor = Brushes.Red;      S3UpperWidth = 2; S3UpperStyle = DashStyleHelper.Dash;
+                S3TimestampPosition = TextPosition.BottomLeft;
+
+                // S4 defaults
+                S4LabelOffset = 50; S4LabelSize = 8;
+                S4LabelBG = new SolidColorBrush(Color.FromArgb(75, 0xdb, 0xdb, 0xdb));
+                S4LabelTextColor = Brushes.Black;
+                S4LineColor = Brushes.White; S4LineWidth = 1; S4LineStyle = DashStyleHelper.Solid;
+
+                // S5 defaults
+                S5LabelOffset = 70; S5LabelSize = 8;
+                S5LabelBG = new SolidColorBrush(Color.FromArgb(75, 0x21, 0x96, 0xf3));
+                S5LabelTextColor = Brushes.White;
+                S5LineColor = new SolidColorBrush(Color.FromArgb(255, 0x64, 0xb5, 0xf6));
+                S5ZoneColor = new SolidColorBrush(Color.FromArgb(255, 0x64, 0xb5, 0xf6));
+                S5ZoneOpacity = 50; S5LineWidth = 2; S5LineStyle = DashStyleHelper.Solid;
+
+                // S6 defaults
+                S6LabelOffset = 50; S6LabelSize = 8;
+                S6LabelBG = new SolidColorBrush(Color.FromArgb(75, 0x9c, 0x27, 0xb0));
+                S6LabelTextColor = Brushes.White;
+                S6LineColor = new SolidColorBrush(Color.FromArgb(255, 0x9c, 0x27, 0xb0));
+                S6ZoneColor = new SolidColorBrush(Color.FromArgb(255, 0x9c, 0x27, 0xb0));
+                S6ZoneOpacity = 70; S6LineWidth = 2; S6LineStyle = DashStyleHelper.Solid;
+
+                // S7 defaults
+                S7LabelOffset = 50; S7LabelSize = 7;
+                S7LabelBG = new SolidColorBrush(Color.FromArgb(75, 0x79, 0x55, 0x48));
+                S7LabelTextColor = Brushes.White;
+                S7LineColor = new SolidColorBrush(Color.FromArgb(255, 0xff, 0x98, 0x00));
+                S7ZoneColor = new SolidColorBrush(Color.FromArgb(255, 0xff, 0x98, 0x00));
+                S7ZoneOpacity = 70; S7LineWidth = 2; S7LineStyle = DashStyleHelper.Solid;
+
+                // LIS defaults
+                LISLabelOffset = 27; LISLabelSize = 8;
+                LISLabelBG = new SolidColorBrush(Color.FromArgb(50, 0xff, 0x98, 0x00));
+                LISLabelTextColor = Brushes.White;
+                LISLineColor = new SolidColorBrush(Color.FromArgb(30, 0xff, 0x98, 0x00));
+                LISLineWidth = 3; LISLineStyle = DashStyleHelper.Solid;
+            }
+            else if (State == State.DataLoaded)
+            {
+                drawingTags  = new List<string>();
+                labelOffsets = new Dictionary<string, int>();
+            }
+            else if (State == State.Historical)
+            {
+                SetZOrder(-1);
+            }
+        }
+        // =====================================================================
+        // OnBarUpdate
+        // =====================================================================
+        protected override void OnBarUpdate()
+        {
+            if (CurrentBar < 1) return;
+            if (IsFirstTickOfBar || CurrentBar >= Bars.Count - 2)
+            {
+                ClearPreviousDrawings();
+                ProcessAndDrawLevels();
+            }
+        }
+
+        private void ClearPreviousDrawings()
+        {
+            foreach (var tag in drawingTags) RemoveDrawObject(tag);
+            drawingTags.Clear();
+            labelOffsets.Clear();
+        }
+
+        // =====================================================================
+        // Visibility helpers
+        // =====================================================================
+        private int GetLeftmostVisibleBarsAgo()
+        {
+            if (ChartBars != null)
+                return Math.Max(0, Math.Min(CurrentBar - ChartBars.FromIndex, CurrentBar));
+            return Math.Min(500, CurrentBar);
+        }
+
+        private int GetLabelBarsAgo(int xOffset)
+        {
+            return Math.Max(0, Math.Min(xOffset, CurrentBar));
+        }
+
+        // =====================================================================
+        // Label overlap prevention - ported from Pine labelOffsets map
+        // =====================================================================
+        private int GetOffsetForPrice(string priceKey, int defaultOffset, int textLength)
+        {
+            int currentOffset;
+            if (labelOffsets.ContainsKey(priceKey))
+                currentOffset = labelOffsets[priceKey];
+            else
+                currentOffset = defaultOffset;
+
+            int labelWidthInBars = (int)Math.Round(textLength * AvgCharWidthInBars) + 2;
+            labelOffsets[priceKey] = currentOffset + labelWidthInBars;
+            return currentOffset;
+        }
+
+        // =====================================================================
+        // PARSER: processAllData - separate _LIS segments from normal
+        // =====================================================================
+        private void ProcessAllData(string rawData, out string normalData, out string lisData)
+        {
+            var normalParts = new List<string>();
+            var lisParts    = new List<string>();
+
+            if (!string.IsNullOrEmpty(rawData))
+            {
+                foreach (string seg in rawData.Split(';'))
+                {
+                    string s = seg.Trim();
+                    if (string.IsNullOrEmpty(s)) continue;
+                    if (s.Contains("_LIS"))
+                        lisParts.Add(s.Replace("_LIS", ""));
+                    else
+                        normalParts.Add(s);
+                }
+            }
+
+            normalData = string.Join(";", normalParts);
+            lisData    = string.Join(";", lisParts);
+        }
+
+        private string AppendData(string existing, string newData)
+        {
+            if (string.IsNullOrEmpty(newData)) return existing;
+            if (string.IsNullOrEmpty(existing)) return newData;
+            return existing + ";" + newData;
+        }
+        // =====================================================================
+        // PARSER: parseSectionsInstrumentAware
+        // Handles "NQ SET 1:", "ES SET 2:", "YM SET 7:" headers properly
+        // Only returns data matching the chartInstrument
+        // =====================================================================
+        private void ParseSectionsInstrumentAware(string rawData, string chartInstrument)
+        {
+            parsedS1 = parsedS2 = parsedS4 = parsedS5 = parsedS6 = parsedS7 = "";
+            parsedLIS = "";
+
+            if (string.IsNullOrEmpty(rawData)) return;
+
+            string cleaned = rawData.Replace("&amp;", ";");
+            cleaned = cleaned.Replace("&lt;", "<").Replace("&gt;", ">").Replace("&quot;", "").Replace("&#39;", "'");
+            string upper = cleaned.ToUpper();
+            int pos = 0;
+
+            while (pos < cleaned.Length)
+            {
+                int headerStart = -1;
+                string foundInstrument = null;
+                int bestPos = int.MaxValue;
+
+                foreach (string instr in new[] { "MNQ", "NQ", "MES", "ES", "MYM", "YM" })
+                {
+                    int idx = upper.IndexOf(instr + " SET ", pos);
+                    if (idx >= 0 && idx < bestPos)
+                    {
+                        bestPos = idx;
+                        foundInstrument = instr;
+                    }
+                }
+
+                if (bestPos == int.MaxValue || foundInstrument == null) break;
+                headerStart = bestPos;
+
+                string rootInstr = foundInstrument;
+                if (rootInstr.StartsWith("MNQ")) rootInstr = "NQ";
+                else if (rootInstr.StartsWith("MES")) rootInstr = "ES";
+                else if (rootInstr.StartsWith("MYM")) rootInstr = "YM";
+
+                int setKeywordEnd = headerStart + foundInstrument.Length + 4;
+                if (setKeywordEnd >= cleaned.Length) break;
+
+                int numStart = setKeywordEnd;
+                while (numStart < cleaned.Length && cleaned[numStart] == ' ') numStart++;
+                int numEndPos = numStart;
+                while (numEndPos < cleaned.Length && char.IsDigit(cleaned[numEndPos])) numEndPos++;
+
+                if (numEndPos == numStart) { pos = setKeywordEnd; continue; }
+                int foundSetNum;
+                if (!int.TryParse(cleaned.Substring(numStart, numEndPos - numStart), out foundSetNum)) { pos = setKeywordEnd; continue; }
+                if (foundSetNum < 1 || foundSetNum > 7) { pos = setKeywordEnd; continue; }
+
+                int dataScanStart = numEndPos;
+                while (dataScanStart < cleaned.Length && cleaned[dataScanStart] == ' ') dataScanStart++;
+                if (dataScanStart < cleaned.Length && cleaned[dataScanStart] == ':')
+                    dataScanStart++;
+
+                int dataStart = -1;
+                for (int j = dataScanStart; j < cleaned.Length; j++)
+                {
+                    char c = cleaned[j];
+                    if (char.IsDigit(c) || (c == '-' && j + 1 < cleaned.Length && char.IsDigit(cleaned[j + 1])))
+                    {
+                        dataStart = j;
+                        break;
+                    }
+                }
+
+                if (dataStart < 0) { pos = setKeywordEnd; continue; }
+
+                int dataEnd = cleaned.Length;
+                foreach (string instr2 in new[] { "MNQ", "NQ", "MES", "ES", "MYM", "YM" })
+                {
+                    int nextHeader = upper.IndexOf(instr2 + " SET ", dataStart);
+                    if (nextHeader > headerStart && nextHeader < dataEnd)
+                        dataEnd = nextHeader;
+                }
+
+                string dataPart = cleaned.Substring(dataStart, dataEnd - dataStart).Trim();
+                while (dataPart.EndsWith(";"))
+                    dataPart = dataPart.Substring(0, dataPart.Length - 1);
+
+                if (rootInstr == chartInstrument)
+                {
+                    string sectionData, sectionLis;
+                    ProcessAllData(dataPart, out sectionData, out sectionLis);
+
+                    switch (foundSetNum)
+                    {
+                        case 1: parsedS1 = AppendData(parsedS1, sectionData); break;
+                        case 2: parsedS2 = AppendData(parsedS2, sectionData); break;
+                        case 4: parsedS4 = AppendData(parsedS4, sectionData); break;
+                        case 5: parsedS5 = AppendData(parsedS5, sectionData); break;
+                        case 6: parsedS6 = AppendData(parsedS6, sectionData); break;
+                        case 7: parsedS7 = AppendData(parsedS7, sectionData); break;
+                    }
+                    parsedLIS = AppendData(parsedLIS, sectionLis);
+                }
+
+                pos = dataEnd;
+            }
+        }
+        // =====================================================================
+        // PARSER: parseSet3Data - ported from Pine
+        // =====================================================================
+        private void ParseSet3Data(string rawData, string chartInstrument)
+        {
+            parsedTimestamp = null;
+            parsedMid = parsedLower = parsedUpper = null;
+
+            if (string.IsNullOrEmpty(rawData)) return;
+
+            string cleaned = rawData.Replace("&amp;", ";");
+            cleaned = cleaned.Replace("&lt;", "<").Replace("&gt;", ">").Replace("&quot;", "").Replace("&#39;", "'");
+            string upperCleaned = cleaned.ToUpper();
+            bool matchesChart = false;
+
+            if (upperCleaned.Contains("NQ") || upperCleaned.Contains("ES") || upperCleaned.Contains("YM") ||
+                upperCleaned.Contains("MNQ") || upperCleaned.Contains("MES") || upperCleaned.Contains("MYM"))
+            {
+                string[] pipeCheck = cleaned.Split('|');
+                if (pipeCheck.Length > 0)
+                {
+                    string timePart = pipeCheck[0].ToUpper();
+                    if (chartInstrument == "NQ" && (timePart.Contains("MNQ") || timePart.Contains("NQ"))) matchesChart = true;
+                    else if (chartInstrument == "ES" && (timePart.Contains("MES") || timePart.Contains("ES"))) matchesChart = true;
+                    else if (chartInstrument == "YM" && (timePart.Contains("MYM") || timePart.Contains("YM"))) matchesChart = true;
+                }
+            }
+            else
+            {
+                matchesChart = true;
+            }
+
+            if (!matchesChart) return;
+
+            string[] parts = cleaned.Split('|');
+            if (parts.Length > 0)
+            {
+                string timePart = parts[0];
+                int timePos = timePart.IndexOf("Time:");
+                if (timePos >= 0)
+                    parsedTimestamp = timePart.Substring(timePos + 5).Trim();
+            }
+
+            if (parts.Length > 1)
+            {
+                foreach (string item in parts[1].Split(','))
+                {
+                    string[] kv = item.Split(':');
+                    if (kv.Length < 2) continue;
+                    string key = kv[0].Trim();
+                    string valStr = kv[1].Trim();
+                    switch (key)
+                    {
+                        case "Mid":
+                            double mv; if (double.TryParse(valStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out mv)) parsedMid = mv;
+                            break;
+                        case "Lower":
+                            double lv; if (double.TryParse(valStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out lv)) parsedLower = lv;
+                            break;
+                        case "Upper":
+                            double uv; if (double.TryParse(valStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out uv)) parsedUpper = uv;
+                            break;
+                    }
+                }
+            }
+        }
+
+        // =====================================================================
+        // File loading
+        // =====================================================================
+        private string LoadFileContent()
+        {
+            if (string.IsNullOrEmpty(FullLevelsFilePath) || !File.Exists(FullLevelsFilePath)) return "";
+            try { return File.ReadAllText(FullLevelsFilePath); }
+            catch (Exception ex) { Print("Error loading levels file: " + ex.Message); return ""; }
+        }
+        // =====================================================================
+        // Master draw dispatcher
+        // =====================================================================
+        private void ProcessAndDrawLevels()
+        {
+            string root = GetChartRootSymbol();
+            if (root == null) return;
+
+            string combined = AllData;
+            if (AutoLoadFromFile)
+            {
+                string fileData = LoadFileContent();
+                if (!string.IsNullOrEmpty(fileData))
+                {
+                    if (!string.IsNullOrEmpty(combined))
+                        combined = combined + ";" + fileData;
+                    else
+                        combined = fileData;
+                }
+            }
+
+            ParseSectionsInstrumentAware(combined, root);
+            ParseSet3Data(Set3Data, root);
+
+            int lookback = Math.Min(500, CurrentBar);
+            DateTime startTime = Time[Math.Min(CurrentBar, lookback)];
+            DateTime endTime   = Time[0].AddDays(10);
+
+            if (!string.IsNullOrWhiteSpace(parsedS1))
+                DrawSet1(parsedS1, S1ShowZones, S1ShowLabels, root, startTime, endTime);
+            if (!string.IsNullOrWhiteSpace(parsedS2))
+                DrawSet2(parsedS2, S2ShowZones, S2ShowLabels, root, startTime, endTime);
+            if (parsedMid.HasValue || parsedLower.HasValue || parsedUpper.HasValue)
+                DrawSet3(root, startTime, endTime);
+            if (!string.IsNullOrWhiteSpace(parsedS4))
+                DrawSet4(parsedS4, S4ShowZones, S4ShowLabels, root, startTime, endTime);
+            if (!string.IsNullOrWhiteSpace(parsedS5))
+                DrawSet5(parsedS5, S5ShowZones, S5ShowLabels, root, startTime, endTime);
+            if (!string.IsNullOrWhiteSpace(parsedS6))
+                DrawSet6(parsedS6, S6ShowZones, S6ShowLabels, root, startTime, endTime);
+            if (!string.IsNullOrWhiteSpace(parsedS7))
+                DrawSet7(parsedS7, S7ShowZones, S7ShowLabels, root, startTime, endTime);
+            if (!string.IsNullOrWhiteSpace(parsedLIS))
+                DrawLIS(parsedLIS, startTime, endTime);
+        }
+        // =====================================================================
+        // DRAWING: Set 1 (Zones) - 6-part comma format
+        // =====================================================================
+        private void DrawSet1(string rawData, bool showZones, bool showLabels, string symbol,
+            DateTime startTime, DateTime endTime)
+        {
+            if ((!showZones && !showLabels) || string.IsNullOrEmpty(rawData)) return;
+
+            foreach (string z in rawData.Split(';'))
+            {
+                string trimmed = z.Trim();
+                if (string.IsNullOrEmpty(trimmed)) continue;
+
+                string[] p = trimmed.Split(',');
+                if (p.Length < 6) continue;
+
+                double pTop, pBottom;
+                double t1 = 0, t2 = 0, o1 = 0, o2 = 0;
+                if (!double.TryParse(p[0], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out pTop)) continue;
+                if (!double.TryParse(p[5], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out pBottom)) continue;
+                double.TryParse(p[1].Replace("T1=", ""), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out t1);
+                double.TryParse(p[2].Replace("T2=", ""), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out t2);
+                double.TryParse(p[3].Replace("O1=", ""), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out o1);
+                double.TryParse(p[4].Replace("O2=", ""), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out o2);
+
+                double hi  = Math.Max(pTop, pBottom);
+                double lo  = Math.Min(pTop, pBottom);
+                double mid = (hi + lo) / 2.0;
+
+                if (showZones)
+                {
+                    if (Math.Abs(hi - lo) < 1)
+                    {
+                        string tag = "S1L_" + symbol + "_" + pTop.ToString("F2");
+                        Draw.Line(this, tag, false, startTime, mid, endTime, mid, S1ZoneColor, S1LineStyle, S1LineWidth);
+                        drawingTags.Add(tag);
+                    }
+                    else
+                    {
+                        string tag = "S1B_" + symbol + "_" + pTop.ToString("F2");
+                        Draw.Rectangle(this, tag, false, startTime, hi, endTime, lo, S1ZoneColor, S1ZoneColor, S1ZoneOpacity);
+                        drawingTags.Add(tag);
+                    }
+                }
+
+                if (showLabels)
+                {
+                    double sum = t1 + t2 + o1 + o2;
+                    string lineOne = "T1=" + t1 + ",T2=" + t2 + ",O1=" + o1 + ",O2=" + o2 + ", = " + sum;
+                    string lineTwo = hi.ToString("F2") + " - " + lo.ToString("F2") + " = " + (int)Math.Round(hi - lo);
+                    string fullText = lineOne + System.Environment.NewLine + lineTwo;
+                    string priceKey = mid.ToString("F2");
+                    int offset = GetOffsetForPrice(priceKey, S1LabelOffset, lineOne.Length);
+                    var font = new SimpleFont("Arial", S1LabelSize);
+                    Draw.Text(this, "S1LB_" + symbol + "_" + pTop.ToString("F2"), false, fullText, offset, mid, 0,
+                        S1LabelTextColor, font, System.Windows.TextAlignment.Left, S1LabelBG, Brushes.Transparent, 0);
+                    drawingTags.Add("S1LB_" + symbol + "_" + pTop.ToString("F2"));
+                }
+            }
+        }
+        // =====================================================================
+        // DRAWING: Set 2 (Levels) - comma pairs or single values
+        // =====================================================================
+        private void DrawSet2(string rawData, bool showZones, bool showLabels, string symbol,
+            DateTime startTime, DateTime endTime)
+        {
+            if ((!showZones && !showLabels) || string.IsNullOrEmpty(rawData)) return;
+
+            foreach (string seg in rawData.Split(';'))
+            {
+                string trimmed = seg.Trim();
+                if (string.IsNullOrEmpty(trimmed)) continue;
+
+                IFormatProvider fp = System.Globalization.CultureInfo.InvariantCulture;
+
+                if (trimmed.Contains(","))
+                {
+                    string[] p = trimmed.Split(',');
+                    double top, bottom;
+                    if (!double.TryParse(p[0], System.Globalization.NumberStyles.Any, fp, out top)) continue;
+                    if (!double.TryParse(p[1], System.Globalization.NumberStyles.Any, fp, out bottom)) continue;
+
+                    double hi = Math.Max(top, bottom);
+                    double lo = Math.Min(top, bottom);
+                    double midp = (hi + lo) / 2.0;
+
+                    if (showZones)
+                    {
+                        string tag = "S2B_" + symbol + "_" + top.ToString("F2");
+                        Draw.Rectangle(this, tag, false, startTime, hi, endTime, lo, S2LabelBG, S2LineColor, S2ZoneOpacity);
+                        drawingTags.Add(tag);
+                    }
+                    if (showLabels)
+                    {
+                        string lblStr = lo.ToString("F2") + " - " + hi.ToString("F2");
+                        string priceKey = midp.ToString("F2");
+                        int offset = GetOffsetForPrice(priceKey, S2LabelOffset, lblStr.Length);
+                        var font = new SimpleFont("Arial", S2LabelSize);
+                        Draw.Text(this, "S2LB_" + symbol + "_" + top.ToString("F2"), false, lblStr, offset, midp, 0,
+                            S2LabelTextColor, font, System.Windows.TextAlignment.Left, S2LabelBG, Brushes.Transparent, 0);
+                        drawingTags.Add("S2LB_" + symbol + "_" + top.ToString("F2"));
+                    }
+                }
+                else
+                {
+                    double level;
+                    if (!double.TryParse(trimmed, System.Globalization.NumberStyles.Any, fp, out level)) continue;
+
+                    if (showZones)
+                    {
+                        string tag = "S2L_" + symbol + "_" + level.ToString("F2");
+                        Draw.Line(this, tag, false, startTime, level, endTime, level, S2LineColor, S2LineStyle, S2LineWidth);
+                        drawingTags.Add(tag);
+                    }
+                    if (showLabels)
+                    {
+                        string lblStr = level.ToString("F2");
+                        string priceKey = level.ToString("F2");
+                        int offset = GetOffsetForPrice(priceKey, S2LabelOffset, lblStr.Length);
+                        var font = new SimpleFont("Arial", S2LabelSize);
+                        Draw.Text(this, "S2LB_" + symbol + "_" + level.ToString("F2"), false, lblStr, offset, level, 0,
+                            S2LabelTextColor, font, System.Windows.TextAlignment.Left, S2LabelBG, Brushes.Transparent, 0);
+                        drawingTags.Add("S2LB_" + symbol + "_" + level.ToString("F2"));
+                    }
+                }
+            }
+        }
+        // =====================================================================
+        // DRAWING: Set 3 (Timestamp) - pipe format + TextFixed corner display
+        // =====================================================================
+        private void DrawSet3(string symbol, DateTime startTime, DateTime endTime)
+        {
+            if (S3ShowTimestamp && !string.IsNullOrEmpty(parsedTimestamp))
+            {
+                string tsText = "Timestamp: " + parsedTimestamp;
+                var tsFont = new SimpleFont("Arial", S3LabelSize);
+                Draw.TextFixed(this, "TS_" + symbol, tsText, S3TimestampPosition, S3LabelTextColor, tsFont, S3LabelBG, Brushes.Transparent, 50);
+                drawingTags.Add("TS_" + symbol);
+            }
+
+            if (!S3ShowKeyLevels && !S3ShowKeyLabels) return;
+
+            if (parsedMid.HasValue)
+            {
+                Draw.Line(this, "S3M_" + symbol, false, startTime, parsedMid.Value, endTime, parsedMid.Value, S3MidColor, S3MidStyle, S3MidWidth);
+                drawingTags.Add("S3M_" + symbol);
+                if (S3ShowKeyLabels)
+                {
+                    string priceKey = parsedMid.Value.ToString("F2");
+                    int offset = GetOffsetForPrice(priceKey, S3LabelOffset, 3);
+                    var font = new SimpleFont("Arial", S3LabelSize);
+                    Draw.Text(this, "S3ML_" + symbol, false, "Mid", offset, parsedMid.Value, 0,
+                        S3LabelTextColor, font, System.Windows.TextAlignment.Left, S3LabelBG, Brushes.Transparent, 0);
+                    drawingTags.Add("S3ML_" + symbol);
+                }
+            }
+            if (parsedLower.HasValue)
+            {
+                Draw.Line(this, "S3L_" + symbol, false, startTime, parsedLower.Value, endTime, parsedLower.Value, S3LowerColor, S3LowerStyle, S3LowerWidth);
+                drawingTags.Add("S3L_" + symbol);
+                if (S3ShowKeyLabels)
+                {
+                    string priceKey = parsedLower.Value.ToString("F2");
+                    int offset = GetOffsetForPrice(priceKey, S3LabelOffset, 5);
+                    var font = new SimpleFont("Arial", S3LabelSize);
+                    Draw.Text(this, "S3LL_" + symbol, false, "Lower", offset, parsedLower.Value, 0,
+                        S3LabelTextColor, font, System.Windows.TextAlignment.Left, S3LabelBG, Brushes.Transparent, 0);
+                    drawingTags.Add("S3LL_" + symbol);
+                }
+            }
+            if (parsedUpper.HasValue)
+            {
+                Draw.Line(this, "S3U_" + symbol, false, startTime, parsedUpper.Value, endTime, parsedUpper.Value, S3UpperColor, S3UpperStyle, S3UpperWidth);
+                drawingTags.Add("S3U_" + symbol);
+                if (S3ShowKeyLabels)
+                {
+                    string priceKey = parsedUpper.Value.ToString("F2");
+                    int offset = GetOffsetForPrice(priceKey, S3LabelOffset, 5);
+                    var font = new SimpleFont("Arial", S3LabelSize);
+                    Draw.Text(this, "S3UL_" + symbol, false, "Upper", offset, parsedUpper.Value, 0,
+                        S3LabelTextColor, font, System.Windows.TextAlignment.Left, S3LabelBG, Brushes.Transparent, 0);
+                    drawingTags.Add("S3UL_" + symbol);
+                }
+            }
+        }
+        // =====================================================================
+        // DRAWING: Set 4 (BKBrown) - dash-separated price-label
+        // =====================================================================
+        private void DrawSet4(string rawData, bool showZones, bool showLabels, string symbol,
+            DateTime startTime, DateTime endTime)
+        {
+            if ((!showZones && !showLabels) || string.IsNullOrEmpty(rawData)) return;
+
+            IFormatProvider fp = System.Globalization.CultureInfo.InvariantCulture;
+
+            foreach (string seg in rawData.Split(';'))
+            {
+                string trimmed = seg.Trim();
+                if (string.IsNullOrEmpty(trimmed)) continue;
+
+                string prc = trimmed, lbl = trimmed;
+                if (trimmed.Contains("-"))
+                {
+                    int dashIdx = trimmed.IndexOf('-');
+                    prc = trimmed.Substring(0, dashIdx);
+                    lbl = trimmed.Substring(dashIdx + 1);
+                }
+
+                double level;
+                if (!double.TryParse(prc, System.Globalization.NumberStyles.Any, fp, out level)) continue;
+
+                if (showZones)
+                {
+                    string tag = "S4L_" + symbol + "_" + level.ToString("F2");
+                    Draw.Line(this, tag, false, startTime, level, endTime, level, S4LineColor, S4LineStyle, S4LineWidth);
+                    drawingTags.Add(tag);
+                }
+                if (showLabels)
+                {
+                    string priceKey = level.ToString("F2");
+                    int offset = GetOffsetForPrice(priceKey, S4LabelOffset, lbl.Length);
+                    var font = new SimpleFont("Arial", S4LabelSize);
+                    Draw.Text(this, "S4LB_" + symbol + "_" + level.ToString("F2"), false, lbl, offset, level, 0,
+                        S4LabelTextColor, font, System.Windows.TextAlignment.Left, S4LabelBG, Brushes.Transparent, 0);
+                    drawingTags.Add("S4LB_" + symbol + "_" + level.ToString("F2"));
+                }
+            }
+        }
+
+        // =====================================================================
+        // DRAWING: Set 5 (reuses Set 1 zone format with own styles)
+        // =====================================================================
+        private void DrawSet5(string rawData, bool showZones, bool showLabels, string symbol,
+            DateTime startTime, DateTime endTime)
+        {
+            if ((!showZones && !showLabels) || string.IsNullOrEmpty(rawData)) return;
+            IFormatProvider fp = System.Globalization.CultureInfo.InvariantCulture;
+
+            foreach (string z in rawData.Split(';'))
+            {
+                string trimmed = z.Trim();
+                if (string.IsNullOrEmpty(trimmed)) continue;
+                string[] p = trimmed.Split(',');
+                if (p.Length < 6) continue;
+                double pTop, pBottom;
+                if (!double.TryParse(p[0], System.Globalization.NumberStyles.Any, fp, out pTop)) continue;
+                if (!double.TryParse(p[5], System.Globalization.NumberStyles.Any, fp, out pBottom)) continue;
+                double t1 = 0, t2 = 0, o1 = 0, o2 = 0;
+                double.TryParse(p[1].Replace("T1=", ""), System.Globalization.NumberStyles.Any, fp, out t1);
+                double.TryParse(p[2].Replace("T2=", ""), System.Globalization.NumberStyles.Any, fp, out t2);
+                double.TryParse(p[3].Replace("O1=", ""), System.Globalization.NumberStyles.Any, fp, out o1);
+                double.TryParse(p[4].Replace("O2=", ""), System.Globalization.NumberStyles.Any, fp, out o2);
+                double hi = Math.Max(pTop, pBottom);
+                double lo = Math.Min(pTop, pBottom);
+                double mid = (hi + lo) / 2.0;
+
+                if (showZones)
+                {
+                    if (Math.Abs(hi - lo) < 1)
+                    {
+                        string tag = "S5L_" + symbol + "_" + pTop.ToString("F2");
+                        Draw.Line(this, tag, false, startTime, mid, endTime, mid, S5ZoneColor, S5LineStyle, S5LineWidth);
+                        drawingTags.Add(tag);
+                    }
+                    else
+                    {
+                        string tag = "S5B_" + symbol + "_" + pTop.ToString("F2");
+                        Draw.Rectangle(this, tag, false, startTime, hi, endTime, lo, S5ZoneColor, S5ZoneColor, S5ZoneOpacity);
+                        drawingTags.Add(tag);
+                    }
+                }
+                if (showLabels)
+                {
+                    double sum = t1 + t2 + o1 + o2;
+                    string lineOne = "T1=" + t1 + ",T2=" + t2 + ",O1=" + o1 + ",O2=" + o2 + ", = " + sum;
+                    string lineTwo = hi.ToString("F2") + " - " + lo.ToString("F2") + " = " + (int)Math.Round(hi - lo);
+                    string fullText = lineOne + System.Environment.NewLine + lineTwo;
+                    string priceKey = mid.ToString("F2");
+                    int offset = GetOffsetForPrice(priceKey, S5LabelOffset, lineOne.Length);
+                    var font = new SimpleFont("Arial", S5LabelSize);
+                    Draw.Text(this, "S5LB_" + symbol + "_" + pTop.ToString("F2"), false, fullText, offset, mid, 0,
+                        S5LabelTextColor, font, System.Windows.TextAlignment.Left, S5LabelBG, Brushes.Transparent, 0);
+                    drawingTags.Add("S5LB_" + symbol + "_" + pTop.ToString("F2"));
+                }
+            }
+        }
+        // =====================================================================
+        // DRAWING: Set 6 (reuses Set 1 zone format with own styles)
+        // =====================================================================
+        private void DrawSet6(string rawData, bool showZones, bool showLabels, string symbol,
+            DateTime startTime, DateTime endTime)
+        {
+            if ((!showZones && !showLabels) || string.IsNullOrEmpty(rawData)) return;
+            IFormatProvider fp = System.Globalization.CultureInfo.InvariantCulture;
+
+            foreach (string z in rawData.Split(';'))
+            {
+                string trimmed = z.Trim();
+                if (string.IsNullOrEmpty(trimmed)) continue;
+                string[] p = trimmed.Split(',');
+                if (p.Length < 6) continue;
+                double pTop, pBottom;
+                if (!double.TryParse(p[0], System.Globalization.NumberStyles.Any, fp, out pTop)) continue;
+                if (!double.TryParse(p[5], System.Globalization.NumberStyles.Any, fp, out pBottom)) continue;
+                double t1 = 0, t2 = 0, o1 = 0, o2 = 0;
+                double.TryParse(p[1].Replace("T1=", ""), System.Globalization.NumberStyles.Any, fp, out t1);
+                double.TryParse(p[2].Replace("T2=", ""), System.Globalization.NumberStyles.Any, fp, out t2);
+                double.TryParse(p[3].Replace("O1=", ""), System.Globalization.NumberStyles.Any, fp, out o1);
+                double.TryParse(p[4].Replace("O2=", ""), System.Globalization.NumberStyles.Any, fp, out o2);
+                double hi = Math.Max(pTop, pBottom);
+                double lo = Math.Min(pTop, pBottom);
+                double mid = (hi + lo) / 2.0;
+
+                if (showZones)
+                {
+                    if (Math.Abs(hi - lo) < 1)
+                    {
+                        string tag = "S6L_" + symbol + "_" + pTop.ToString("F2");
+                        Draw.Line(this, tag, false, startTime, mid, endTime, mid, S6ZoneColor, S6LineStyle, S6LineWidth);
+                        drawingTags.Add(tag);
+                    }
+                    else
+                    {
+                        string tag = "S6B_" + symbol + "_" + pTop.ToString("F2");
+                        Draw.Rectangle(this, tag, false, startTime, hi, endTime, lo, S6ZoneColor, S6ZoneColor, S6ZoneOpacity);
+                        drawingTags.Add(tag);
+                    }
+                }
+                if (showLabels)
+                {
+                    double sum = t1 + t2 + o1 + o2;
+                    string lineOne = "T1=" + t1 + ",T2=" + t2 + ",O1=" + o1 + ",O2=" + o2 + ", = " + sum;
+                    string lineTwo = hi.ToString("F2") + " - " + lo.ToString("F2") + " = " + (int)Math.Round(hi - lo);
+                    string fullText = lineOne + System.Environment.NewLine + lineTwo;
+                    string priceKey = mid.ToString("F2");
+                    int offset = GetOffsetForPrice(priceKey, S6LabelOffset, lineOne.Length);
+                    var font = new SimpleFont("Arial", S6LabelSize);
+                    Draw.Text(this, "S6LB_" + symbol + "_" + pTop.ToString("F2"), false, fullText, offset, mid, 0,
+                        S6LabelTextColor, font, System.Windows.TextAlignment.Left, S6LabelBG, Brushes.Transparent, 0);
+                    drawingTags.Add("S6LB_" + symbol + "_" + pTop.ToString("F2"));
+                }
+            }
+        }
+
+        // =====================================================================
+        // DRAWING: Set 7 (reuses Set 1 zone format with own styles)
+        // =====================================================================
+        private void DrawSet7(string rawData, bool showZones, bool showLabels, string symbol,
+            DateTime startTime, DateTime endTime)
+        {
+            if ((!showZones && !showLabels) || string.IsNullOrEmpty(rawData)) return;
+            IFormatProvider fp = System.Globalization.CultureInfo.InvariantCulture;
+
+            foreach (string z in rawData.Split(';'))
+            {
+                string trimmed = z.Trim();
+                if (string.IsNullOrEmpty(trimmed)) continue;
+                string[] p = trimmed.Split(',');
+                if (p.Length < 6) continue;
+                double pTop, pBottom;
+                if (!double.TryParse(p[0], System.Globalization.NumberStyles.Any, fp, out pTop)) continue;
+                if (!double.TryParse(p[5], System.Globalization.NumberStyles.Any, fp, out pBottom)) continue;
+                double t1 = 0, t2 = 0, o1 = 0, o2 = 0;
+                double.TryParse(p[1].Replace("T1=", ""), System.Globalization.NumberStyles.Any, fp, out t1);
+                double.TryParse(p[2].Replace("T2=", ""), System.Globalization.NumberStyles.Any, fp, out t2);
+                double.TryParse(p[3].Replace("O1=", ""), System.Globalization.NumberStyles.Any, fp, out o1);
+                double.TryParse(p[4].Replace("O2=", ""), System.Globalization.NumberStyles.Any, fp, out o2);
+                double hi = Math.Max(pTop, pBottom);
+                double lo = Math.Min(pTop, pBottom);
+                double mid = (hi + lo) / 2.0;
+
+                if (showZones)
+                {
+                    if (Math.Abs(hi - lo) < 1)
+                    {
+                        string tag = "S7L_" + symbol + "_" + pTop.ToString("F2");
+                        Draw.Line(this, tag, false, startTime, mid, endTime, mid, S7ZoneColor, S7LineStyle, S7LineWidth);
+                        drawingTags.Add(tag);
+                    }
+                    else
+                    {
+                        string tag = "S7B_" + symbol + "_" + pTop.ToString("F2");
+                        Draw.Rectangle(this, tag, false, startTime, hi, endTime, lo, S7ZoneColor, S7ZoneColor, S7ZoneOpacity);
+                        drawingTags.Add(tag);
+                    }
+                }
+                if (showLabels)
+                {
+                    double sum = t1 + t2 + o1 + o2;
+                    string lineOne = "T1=" + t1 + ",T2=" + t2 + ",O1=" + o1 + ",O2=" + o2 + ", = " + sum;
+                    string lineTwo = hi.ToString("F2") + " - " + lo.ToString("F2") + " = " + (int)Math.Round(hi - lo);
+                    string fullText = lineOne + System.Environment.NewLine + lineTwo;
+                    string priceKey = mid.ToString("F2");
+                    int offset = GetOffsetForPrice(priceKey, S7LabelOffset, lineOne.Length);
+                    var font = new SimpleFont("Arial", S7LabelSize);
+                    Draw.Text(this, "S7LB_" + symbol + "_" + pTop.ToString("F2"), false, fullText, offset, mid, 0,
+                        S7LabelTextColor, font, System.Windows.TextAlignment.Left, S7LabelBG, Brushes.Transparent, 0);
+                    drawingTags.Add("S7LB_" + symbol + "_" + pTop.ToString("F2"));
+                }
+            }
+        }
+        // =====================================================================
+        // DRAWING: LIS - combined from all sets
+        // =====================================================================
+        private void DrawLIS(string rawData, DateTime startTime, DateTime endTime)
+        {
+            if (string.IsNullOrEmpty(rawData)) return;
+            IFormatProvider fp = System.Globalization.CultureInfo.InvariantCulture;
+
+            foreach (string seg in rawData.Split(';'))
+            {
+                string trimmed = seg.Trim();
+                if (string.IsNullOrEmpty(trimmed)) continue;
+
+                if (trimmed.Contains(","))
+                {
+                    string[] p = trimmed.Split(',');
+                    double t, b;
+                    if (p.Length < 2) continue;
+                    if (!double.TryParse(p[0], System.Globalization.NumberStyles.Any, fp, out t)) continue;
+                    if (!double.TryParse(p[1], System.Globalization.NumberStyles.Any, fp, out b)) continue;
+
+                    double hi = Math.Max(t, b);
+                    double lo = Math.Min(t, b);
+                    double mid = (hi + lo) / 2.0;
+
+                    string tag = "LISB_" + t.ToString("F2");
+                    Draw.Rectangle(this, tag, false, startTime, hi, endTime, lo, LISLabelBG, LISLineColor, 80);
+                    drawingTags.Add(tag);
+
+                    string priceKey = mid.ToString("F2");
+                    int offset = GetOffsetForPrice(priceKey, LISLabelOffset, 3);
+                    var font = new SimpleFont("Arial", LISLabelSize);
+                    Draw.Text(this, "LISLB_" + t.ToString("F2"), false, "LIS", offset, mid, 0,
+                        LISLabelTextColor, font, System.Windows.TextAlignment.Left, LISLabelBG, Brushes.Transparent, 0);
+                    drawingTags.Add("LISLB_" + t.ToString("F2"));
+                }
+                else
+                {
+                    double level;
+                    if (!double.TryParse(trimmed, System.Globalization.NumberStyles.Any, fp, out level)) continue;
+
+                    string tag = "LISL_" + level.ToString("F2");
+                    Draw.Line(this, tag, false, startTime, level, endTime, level, LISLineColor, LISLineStyle, LISLineWidth);
+                    drawingTags.Add(tag);
+
+                    string priceKey = level.ToString("F2");
+                    int offset = GetOffsetForPrice(priceKey, LISLabelOffset, 3);
+                    var font = new SimpleFont("Arial", LISLabelSize);
+                    Draw.Text(this, "LISLB_" + level.ToString("F2"), false, "LIS", offset, level, 0,
+                        LISLabelTextColor, font, System.Windows.TextAlignment.Left, LISLabelBG, Brushes.Transparent, 0);
+                    drawingTags.Add("LISLB_" + level.ToString("F2"));
+                }
+            }
+        }
+        // =====================================================================
+        // PROPERTIES
+        // =====================================================================
+        #region Properties
+
+        // ── Data Input ────────────────────────────────────────────────────────
+        [NinjaScriptProperty]
+        [Display(Name = "All Levels Data", Description = "Paste sections with NQ/ES/YM SET X headers like Pine single input", GroupName = "Data Input", Order = 1)]
+        public string AllData { get; set; }
+
+        [NinjaScriptProperty]
+        [Display(Name = "Set 3 Data", Description = "Format: [TICKER] Time: ... | Mid: ..., Lower: ..., Upper: ...", GroupName = "Data Input", Order = 2)]
+        public string Set3Data { get; set; }
+
+        [Display(Name = "Auto-Load From File", GroupName = "File Loading", Order = 1)]
+        public bool AutoLoadFromFile { get; set; }
+
+        [Display(Name = "Full Levels File Path", GroupName = "File Loading", Order = 2)]
+        public string FullLevelsFilePath { get; set; }
+
+        // ── Global ───────────────────────────────────────────────────────────
+        [Display(Name = "Avg Char Width (Bars)", Description = "Label spacing multiplier for overlap prevention", GroupName = "Global", Order = 1)]
+        public float AvgCharWidthInBars { get; set; }
+
+        // ── Show/Hide ─────────────────────────────────────────────────────────
+        [Display(Name = "S1 Show Zones",  GroupName = "Show/Hide", Order = 1)]  public bool S1ShowZones  { get; set; }
+        [Display(Name = "S1 Show Labels", GroupName = "Show/Hide", Order = 2)]  public bool S1ShowLabels { get; set; }
+        [Display(Name = "S2 Show Zones",  GroupName = "Show/Hide", Order = 3)]  public bool S2ShowZones  { get; set; }
+        [Display(Name = "S2 Show Labels", GroupName = "Show/Hide", Order = 4)]  public bool S2ShowLabels { get; set; }
+        [Display(Name = "S3 Show Key Levels",  GroupName = "Show/Hide", Order = 5)]  public bool S3ShowKeyLevels  { get; set; }
+        [Display(Name = "S3 Show Key Labels",  GroupName = "Show/Hide", Order = 6)]  public bool S3ShowKeyLabels  { get; set; }
+        [Display(Name = "S3 Show Timestamp",    GroupName = "Show/Hide", Order = 7)]  public bool S3ShowTimestamp    { get; set; }
+        [Display(Name = "S4 Show Zones",  GroupName = "Show/Hide", Order = 8)]  public bool S4ShowZones  { get; set; }
+        [Display(Name = "S4 Show Labels", GroupName = "Show/Hide", Order = 9)]  public bool S4ShowLabels { get; set; }
+        [Display(Name = "S5 Show Zones",  GroupName = "Show/Hide", Order = 10)] public bool S5ShowZones  { get; set; }
+        [Display(Name = "S5 Show Labels", GroupName = "Show/Hide", Order = 11)] public bool S5ShowLabels { get; set; }
+        [Display(Name = "S6 Show Zones",  GroupName = "Show/Hide", Order = 12)] public bool S6ShowZones  { get; set; }
+        [Display(Name = "S6 Show Labels", GroupName = "Show/Hide", Order = 13)] public bool S6ShowLabels { get; set; }
+        [Display(Name = "S7 Show Zones",  GroupName = "Show/Hide", Order = 14)] public bool S7ShowZones  { get; set; }
+        [Display(Name = "S7 Show Labels", GroupName = "Show/Hide", Order = 15)] public bool S7ShowLabels { get; set; }
+        // ── S1 Style ──────────────────────────────────────────────────────────
+        [Display(Name = "Label Offset", GroupName = "S1 Style", Order = 1)]  public int S1LabelOffset { get; set; }
+        [Display(Name = "Label Size",   GroupName = "S1 Style", Order = 2)]  public int S1LabelSize   { get; set; }
+        [XmlIgnore][Display(Name = "Label BG",     GroupName = "S1 Style", Order = 3)]  public Brush S1LabelBG     { get; set; }
+        [Browsable(false)] public string S1LabelBGSer     { get { return Serialize.BrushToString(S1LabelBG); }     set { S1LabelBG     = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Label Text",   GroupName = "S1 Style", Order = 4)]  public Brush S1LabelTextColor { get; set; }
+        [Browsable(false)] public string S1LabelTextColorSer { get { return Serialize.BrushToString(S1LabelTextColor); } set { S1LabelTextColor = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Line Color",   GroupName = "S1 Style", Order = 5)]  public Brush S1LineColor   { get; set; }
+        [Browsable(false)] public string S1LineColorSer   { get { return Serialize.BrushToString(S1LineColor); }   set { S1LineColor   = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Zone Color",   GroupName = "S1 Style", Order = 6)]  public Brush S1ZoneColor   { get; set; }
+        [Browsable(false)] public string S1ZoneColorSer   { get { return Serialize.BrushToString(S1ZoneColor); }   set { S1ZoneColor   = Serialize.StringToBrush(value); } }
+        [Display(Name = "Zone Opacity", GroupName = "S1 Style", Order = 7)]  public int S1ZoneOpacity { get; set; }
+        [Display(Name = "Line Width",   GroupName = "S1 Style", Order = 8)]  public int S1LineWidth   { get; set; }
+        [Display(Name = "Line Style",   GroupName = "S1 Style", Order = 9)]  public DashStyleHelper S1LineStyle { get; set; }
+
+        // ── S2 Style ──────────────────────────────────────────────────────────
+        [Display(Name = "Label Offset", GroupName = "S2 Style", Order = 1)]  public int S2LabelOffset { get; set; }
+        [Display(Name = "Label Size",   GroupName = "S2 Style", Order = 2)]  public int S2LabelSize   { get; set; }
+        [XmlIgnore][Display(Name = "Label BG",     GroupName = "S2 Style", Order = 3)]  public Brush S2LabelBG     { get; set; }
+        [Browsable(false)] public string S2LabelBGSer     { get { return Serialize.BrushToString(S2LabelBG); }     set { S2LabelBG     = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Label Text",   GroupName = "S2 Style", Order = 4)]  public Brush S2LabelTextColor { get; set; }
+        [Browsable(false)] public string S2LabelTextColorSer { get { return Serialize.BrushToString(S2LabelTextColor); } set { S2LabelTextColor = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Line Color",   GroupName = "S2 Style", Order = 5)]  public Brush S2LineColor   { get; set; }
+        [Browsable(false)] public string S2LineColorSer   { get { return Serialize.BrushToString(S2LineColor); }   set { S2LineColor   = Serialize.StringToBrush(value); } }
+        [Display(Name = "Zone Opacity", GroupName = "S2 Style", Order = 6)]  public int S2ZoneOpacity { get; set; }
+        [Display(Name = "Line Width",   GroupName = "S2 Style", Order = 7)]  public int S2LineWidth   { get; set; }
+        [Display(Name = "Line Style",   GroupName = "S2 Style", Order = 8)]  public DashStyleHelper S2LineStyle { get; set; }
+
+        // ── S3 Style ──────────────────────────────────────────────────────────
+        [Display(Name = "Label Offset", GroupName = "S3 Style", Order = 1)]  public int S3LabelOffset { get; set; }
+        [Display(Name = "Label Size",   GroupName = "S3 Style", Order = 2)]  public int S3LabelSize   { get; set; }
+        [XmlIgnore][Display(Name = "Label BG",     GroupName = "S3 Style", Order = 3)]  public Brush S3LabelBG     { get; set; }
+        [Browsable(false)] public string S3LabelBGSer     { get { return Serialize.BrushToString(S3LabelBG); }     set { S3LabelBG     = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Label Text",   GroupName = "S3 Style", Order = 4)]  public Brush S3LabelTextColor { get; set; }
+        [Browsable(false)] public string S3LabelTextColorSer { get { return Serialize.BrushToString(S3LabelTextColor); } set { S3LabelTextColor = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Mid Color",    GroupName = "S3 Style", Order = 5)]  public Brush S3MidColor    { get; set; }
+        [Browsable(false)] public string S3MidColorSer    { get { return Serialize.BrushToString(S3MidColor); }    set { S3MidColor    = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Lower Color",  GroupName = "S3 Style", Order = 6)]  public Brush S3LowerColor  { get; set; }
+        [Browsable(false)] public string S3LowerColorSer  { get { return Serialize.BrushToString(S3LowerColor); }  set { S3LowerColor  = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Upper Color",  GroupName = "S3 Style", Order = 7)]  public Brush S3UpperColor  { get; set; }
+        [Browsable(false)] public string S3UpperColorSer  { get { return Serialize.BrushToString(S3UpperColor); }  set { S3UpperColor  = Serialize.StringToBrush(value); } }
+        [Display(Name = "Mid Width",    GroupName = "S3 Style", Order = 8)]  public int S3MidWidth     { get; set; }
+        [Display(Name = "Lower Width",  GroupName = "S3 Style", Order = 9)]  public int S3LowerWidth   { get; set; }
+        [Display(Name = "Upper Width",  GroupName = "S3 Style", Order = 10)] public int S3UpperWidth   { get; set; }
+        [Display(Name = "Mid Style",    GroupName = "S3 Style", Order = 11)] public DashStyleHelper S3MidStyle   { get; set; }
+        [Display(Name = "Lower Style",  GroupName = "S3 Style", Order = 12)] public DashStyleHelper S3LowerStyle { get; set; }
+        [Display(Name = "Upper Style",  GroupName = "S3 Style", Order = 13)] public DashStyleHelper S3UpperStyle { get; set; }
+        [Display(Name = "Timestamp Position", GroupName = "S3 Style", Order = 14)] public TextPosition S3TimestampPosition { get; set; }
+        // ── S4 Style ──────────────────────────────────────────────────────────
+        [Display(Name = "Label Offset", GroupName = "S4 Style", Order = 1)]  public int S4LabelOffset { get; set; }
+        [Display(Name = "Label Size",   GroupName = "S4 Style", Order = 2)]  public int S4LabelSize   { get; set; }
+        [XmlIgnore][Display(Name = "Label BG",     GroupName = "S4 Style", Order = 3)]  public Brush S4LabelBG     { get; set; }
+        [Browsable(false)] public string S4LabelBGSer     { get { return Serialize.BrushToString(S4LabelBG); }     set { S4LabelBG     = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Label Text",   GroupName = "S4 Style", Order = 4)]  public Brush S4LabelTextColor { get; set; }
+        [Browsable(false)] public string S4LabelTextColorSer { get { return Serialize.BrushToString(S4LabelTextColor); } set { S4LabelTextColor = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Line Color",   GroupName = "S4 Style", Order = 5)]  public Brush S4LineColor   { get; set; }
+        [Browsable(false)] public string S4LineColorSer   { get { return Serialize.BrushToString(S4LineColor); }   set { S4LineColor   = Serialize.StringToBrush(value); } }
+        [Display(Name = "Line Width",   GroupName = "S4 Style", Order = 6)]  public int S4LineWidth   { get; set; }
+        [Display(Name = "Line Style",   GroupName = "S4 Style", Order = 7)]  public DashStyleHelper S4LineStyle { get; set; }
+
+        // ── S5 Style ──────────────────────────────────────────────────────────
+        [Display(Name = "Label Offset", GroupName = "S5 Style", Order = 1)]  public int S5LabelOffset { get; set; }
+        [Display(Name = "Label Size",   GroupName = "S5 Style", Order = 2)]  public int S5LabelSize   { get; set; }
+        [XmlIgnore][Display(Name = "Label BG",     GroupName = "S5 Style", Order = 3)]  public Brush S5LabelBG     { get; set; }
+        [Browsable(false)] public string S5LabelBGSer     { get { return Serialize.BrushToString(S5LabelBG); }     set { S5LabelBG     = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Label Text",   GroupName = "S5 Style", Order = 4)]  public Brush S5LabelTextColor { get; set; }
+        [Browsable(false)] public string S5LabelTextColorSer { get { return Serialize.BrushToString(S5LabelTextColor); } set { S5LabelTextColor = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Line Color",   GroupName = "S5 Style", Order = 5)]  public Brush S5LineColor   { get; set; }
+        [Browsable(false)] public string S5LineColorSer   { get { return Serialize.BrushToString(S5LineColor); }   set { S5LineColor   = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Zone Color",   GroupName = "S5 Style", Order = 6)]  public Brush S5ZoneColor   { get; set; }
+        [Browsable(false)] public string S5ZoneColorSer   { get { return Serialize.BrushToString(S5ZoneColor); }   set { S5ZoneColor   = Serialize.StringToBrush(value); } }
+        [Display(Name = "Zone Opacity", GroupName = "S5 Style", Order = 7)]  public int S5ZoneOpacity { get; set; }
+        [Display(Name = "Line Width",   GroupName = "S5 Style", Order = 8)]  public int S5LineWidth   { get; set; }
+        [Display(Name = "Line Style",   GroupName = "S5 Style", Order = 9)]  public DashStyleHelper S5LineStyle { get; set; }
+
+        // ── S6 Style ──────────────────────────────────────────────────────────
+        [Display(Name = "Label Offset", GroupName = "S6 Style", Order = 1)]  public int S6LabelOffset { get; set; }
+        [Display(Name = "Label Size",   GroupName = "S6 Style", Order = 2)]  public int S6LabelSize   { get; set; }
+        [XmlIgnore][Display(Name = "Label BG",     GroupName = "S6 Style", Order = 3)]  public Brush S6LabelBG     { get; set; }
+        [Browsable(false)] public string S6LabelBGSer     { get { return Serialize.BrushToString(S6LabelBG); }     set { S6LabelBG     = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Label Text",   GroupName = "S6 Style", Order = 4)]  public Brush S6LabelTextColor { get; set; }
+        [Browsable(false)] public string S6LabelTextColorSer { get { return Serialize.BrushToString(S6LabelTextColor); } set { S6LabelTextColor = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Line Color",   GroupName = "S6 Style", Order = 5)]  public Brush S6LineColor   { get; set; }
+        [Browsable(false)] public string S6LineColorSer   { get { return Serialize.BrushToString(S6LineColor); }   set { S6LineColor   = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Zone Color",   GroupName = "S6 Style", Order = 6)]  public Brush S6ZoneColor   { get; set; }
+        [Browsable(false)] public string S6ZoneColorSer   { get { return Serialize.BrushToString(S6ZoneColor); }   set { S6ZoneColor   = Serialize.StringToBrush(value); } }
+        [Display(Name = "Zone Opacity", GroupName = "S6 Style", Order = 7)]  public int S6ZoneOpacity { get; set; }
+        [Display(Name = "Line Width",   GroupName = "S6 Style", Order = 8)]  public int S6LineWidth   { get; set; }
+        [Display(Name = "Line Style",   GroupName = "S6 Style", Order = 9)]  public DashStyleHelper S6LineStyle { get; set; }
+
+        // ── S7 Style ──────────────────────────────────────────────────────────
+        [Display(Name = "Label Offset", GroupName = "S7 Style", Order = 1)]  public int S7LabelOffset { get; set; }
+        [Display(Name = "Label Size",   GroupName = "S7 Style", Order = 2)]  public int S7LabelSize   { get; set; }
+        [XmlIgnore][Display(Name = "Label BG",     GroupName = "S7 Style", Order = 3)]  public Brush S7LabelBG     { get; set; }
+        [Browsable(false)] public string S7LabelBGSer     { get { return Serialize.BrushToString(S7LabelBG); }     set { S7LabelBG     = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Label Text",   GroupName = "S7 Style", Order = 4)]  public Brush S7LabelTextColor { get; set; }
+        [Browsable(false)] public string S7LabelTextColorSer { get { return Serialize.BrushToString(S7LabelTextColor); } set { S7LabelTextColor = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Line Color",   GroupName = "S7 Style", Order = 5)]  public Brush S7LineColor   { get; set; }
+        [Browsable(false)] public string S7LineColorSer   { get { return Serialize.BrushToString(S7LineColor); }   set { S7LineColor   = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Zone Color",   GroupName = "S7 Style", Order = 6)]  public Brush S7ZoneColor   { get; set; }
+        [Browsable(false)] public string S7ZoneColorSer   { get { return Serialize.BrushToString(S7ZoneColor); }   set { S7ZoneColor   = Serialize.StringToBrush(value); } }
+        [Display(Name = "Zone Opacity", GroupName = "S7 Style", Order = 7)]  public int S7ZoneOpacity { get; set; }
+        [Display(Name = "Line Width",   GroupName = "S7 Style", Order = 8)]  public int S7LineWidth   { get; set; }
+        [Display(Name = "Line Style",   GroupName = "S7 Style", Order = 9)]  public DashStyleHelper S7LineStyle { get; set; }
+        // ── LIS Style ─────────────────────────────────────────────────────────
+        [Display(Name = "Label Offset", GroupName = "LIS Style", Order = 1)]  public int LISLabelOffset { get; set; }
+        [Display(Name = "Label Size",   GroupName = "LIS Style", Order = 2)]  public int LISLabelSize   { get; set; }
+        [XmlIgnore][Display(Name = "Label BG",     GroupName = "LIS Style", Order = 3)]  public Brush LISLabelBG     { get; set; }
+        [Browsable(false)] public string LISLabelBGSer     { get { return Serialize.BrushToString(LISLabelBG); }     set { LISLabelBG     = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Label Text",   GroupName = "LIS Style", Order = 4)]  public Brush LISLabelTextColor { get; set; }
+        [Browsable(false)] public string LISLabelTextColorSer { get { return Serialize.BrushToString(LISLabelTextColor); } set { LISLabelTextColor = Serialize.StringToBrush(value); } }
+        [XmlIgnore][Display(Name = "Line Color",   GroupName = "LIS Style", Order = 5)]  public Brush LISLineColor   { get; set; }
+        [Browsable(false)] public string LISLineColorSer   { get { return Serialize.BrushToString(LISLineColor); }   set { LISLineColor   = Serialize.StringToBrush(value); } }
+        [Display(Name = "Line Width",   GroupName = "LIS Style", Order = 6)]  public int LISLineWidth   { get; set; }
+        [Display(Name = "Line Style",   GroupName = "LIS Style", Order = 7)]  public DashStyleHelper LISLineStyle { get; set; }
+
+        #endregion
+    }
+}
+

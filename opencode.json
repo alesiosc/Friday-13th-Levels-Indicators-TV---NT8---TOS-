@@ -1,0 +1,23 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "hermes-army": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Hermes Army",
+      "options": {
+        "baseURL": "http://localhost:11434/v1"
+      },
+      "models": {
+        "qwen2.5:14b": {
+          "name": "Qwen 2.5 14B"
+        },
+        "research-deep:latest": {
+          "name": "Research Deep"
+        }
+      }
+    },
+    "deepseek": {
+      "name": "DeepSeek V4 Flash"
+    }
+  }
+}

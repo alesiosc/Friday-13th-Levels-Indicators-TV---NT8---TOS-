@@ -9,6 +9,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="src\NT8_Levels_Indicator.cs.bak" />
+    <Compile Remove="src\NT8_Friday13th_Levels_ORIGINAL_BACKUP.cs.bak" />
+    <Compile Remove="src\Program.cs" />
+    <Compile Remove="src\Test_NT8_Levels_Indicator.cs" />
+    <Compile Remove="NT8LevelsIndicator - RR.cs.bak" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Reference Include="libs\NinjaTrader.Core.dll" />
     <Reference Include="libs\NinjaTrader.Gui.dll" />
     <Reference Include="libs\NinjaTrader.Client.dll" />

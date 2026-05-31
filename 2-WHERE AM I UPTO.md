@@ -1,42 +1,15 @@
-### **Date:** 2026-01-13 18:59:00
+### **Date:** 2026-05-31
 
 ## **Project Status:**
 
-- **Indicator fully functional in NinjaTrader 8**
-- Complete fresh conversion from Pine Script completed
-- All label sets now have horizontal X offset properties
-- Global label anchor (Left/Right) for chart resize behavior
-- Set 1 now has line width and style properties
+- Indicator compiles clean in NT8 8.1.7.0
+- All 8 sets + LIS drawing working
+- SET 8 (Zulu) added with custom VOL/OI/Gamma Flip parsing
+- Labels offset above lines (-14 yPixelOffset)
+- File auto-loading enabled by default
+- levels.txt has full NQ+ES+YM data
 
-## **Files Created/Modified:**
+## **Unresolved:**
 
-| File | Size | Description |
-|------|------|-------------|
-| `src/NT8_Levels_Indicator.cs` | ~39KB | Main indicator source code (updated with anchor feature) |
-| `src/NT8_Levels_Indicator_CHECKPOINT_2025_12_23.cs` | ~33KB | Backup checkpoint |
-
-## **Current Status:**
-
-- ✅ Fresh Pine Script to NT8 conversion complete
-- ✅ Time-based drawing for chart spanning
-- ✅ Dynamic label positioning at far left
-- ✅ ZOrder fixed (zones behind candles)
-- ✅ Bold/Italic label properties added
-- ✅ All sets have Label X Offset (horizontal positioning)
-- ✅ Global Label Anchor Position (Left/Right) added
-- ✅ Set 1 Line Width/Style properties added
-- ⏳ User testing in NinjaTrader 8 environment
-
-## **Next Priority Task:**
-
-1. **Test Label Anchor feature** - verify labels stay anchored when resizing chart
-2. **Test X offset for all sets** - verify horizontal label positioning works
-3. User testing of all new features
-
-## **Pending Issues:**
-
-- None currently identified
-
-## **Abandoned Features:**
-
-- None - all functionality from the original script has been preserved
+1. **Friday 13th folder in chart picker** — NT8 8.1.7.0 lacks `Folder` property on `Indicator` base. Only appears alphabetically. DLL-based approach or NT8 update needed.
+2. **Master toggle checkbox** — user wanted a single checkbox to enable/disable all zones/labels (not implemented)

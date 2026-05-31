@@ -1,0 +1,1394 @@
+#region Using declarations
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Windows.Media;
+using System.Xml.Serialization;
+using NinjaTrader.Cbi;
+using NinjaTrader.Data;
+using NinjaTrader.Gui;
+using NinjaTrader.Gui.Chart;
+using NinjaTrader.Gui.Tools;
+using NinjaTrader.NinjaScript;
+using NinjaTrader.NinjaScript.DrawingTools;
+#endregion
+
+namespace NinjaTrader.NinjaScript.Indicators
+{
+	public class NT8LevelsIndicator : Indicator
+	{
+		#region Cache / Model
+
+		private static readonly object cacheLock = new object();
+		private static readonly Dictionary<string, CacheEntry> levelCache =
+			new Dictionary<string, CacheEntry>(StringComparer.OrdinalIgnoreCase);
+
+		private sealed class CacheEntry
+		{
+			public DateTime WriteTimeUtc { get; set; }
+			public ParsedLevels Levels { get; set; }
+		}
+
+		private sealed class ParsedLevels
+		{
+			public string DatasetKey { get; set; }
+			public Dictionary<int, string> SetData { get; private set; }
+			public List<string> LisSegments { get; private set; }
+
+			public ParsedLevels()
+			{
+				SetData = new Dictionary<int, string>();
+				LisSegments = new List<string>();
+			}
+		}
+
+		private enum SetKind
+		{
+			Set1Like,
+			Set2,
+			Set3,
+			Set4
+		}
+
+		private sealed class SetDescriptor
+		{
+			public int SetNumber { get; set; }
+			public string StyleKey { get; set; }
+			public SetKind Kind { get; set; }
+			public bool ShowZones { get; set; }
+			public bool ShowLabels { get; set; }
+			public bool ShowKeyLevels { get; set; }
+			public bool ShowKeyLabels { get; set; }
+			public bool ShowTimestamp { get; set; }
+		}
+
+		private sealed class RenderStyle
+		{
+			public Brush LineColor { get; set; }
+			public DashStyleHelper LineStyle { get; set; }
+			public int LineWidth { get; set; }
+
+			public Brush ZoneColor { get; set; }
+			public int ZoneOpacity { get; set; }
+
+			public Brush LabelTextColor { get; set; }
+			public Brush LabelBackgroundColor { get; set; }
+			public int LabelFontSize { get; set; }
+			public int LabelYOffset { get; set; }
+			public bool LabelBold { get; set; }
+			public bool LabelItalic { get; set; }
+			public bool LabelOnRight { get; set; }
+			public int LabelXOffset { get; set; }
+
+			public Brush MidLineColor { get; set; }
+			public DashStyleHelper MidLineStyle { get; set; }
+			public int MidLineWidth { get; set; }
+
+			public Brush LowerLineColor { get; set; }
+			public DashStyleHelper LowerLineStyle { get; set; }
+			public int LowerLineWidth { get; set; }
+
+			public Brush UpperLineColor { get; set; }
+			public DashStyleHelper UpperLineStyle { get; set; }
+			public int UpperLineWidth { get; set; }
+		}
+
+		#endregion
+
+		#region Instance fields
+
+		private List<string> drawingTags;
+		private string activeRoot;
+		private ParsedLevels activeLevels;
+		private Dictionary<string, RenderStyle> styleCatalog;
+		private List<SetDescriptor> activeSetDescriptors;
+
+		private bool redrawRequired;
+		private int lastRenderedBar = -1;
+		private int lastVisibleFromIndex = -1;
+		private string lastFileStamp = string.Empty;
+		private DateTime nextFileCheckUtc = DateTime.MinValue;
+
+		#endregion
+
+		#region Lifecycle
+
+		protected override void OnStateChange()
+		{
+			if (State == State.SetDefaults)
+			{
+				Description = "Optimized chart-specific levels indicator with selective loading and cached file parsing.";
+				Name = "NT8LevelsIndicator";
+				Calculate = Calculate.OnBarClose;
+				IsOverlay = true;
+				DisplayInDataBox = false;
+				DrawOnPricePanel = true;
+				ScaleJustification = ScaleJustification.Right;
+				IsSuspendedWhileInactive = true;
+				ZOrder = -1;
+
+				FullLevelsFilePath = @"C:\Users\hdkhu\Desktop\message.txt";
+				AutoLoadFromFile = true;
+				FileCheckIntervalSeconds = 300;
+				ShowLIS = true;
+
+				Set1Data = string.Empty;
+				Set2Data = string.Empty;
+				Set3Data = string.Empty;
+				Set4Data = string.Empty;
+				Set5Data = string.Empty;
+				Set6Data = string.Empty;
+				Set7Data = string.Empty;
+
+				Set1ShowZones = true;
+				Set1ShowLabels = true;
+				Set2ShowZones = true;
+				Set2ShowLabels = true;
+				Set3ShowKeyLevels = true;
+				Set3ShowKeyLabels = true;
+				Set3ShowTimestamp = true;
+				Set4ShowZones = true;
+				Set4ShowLabels = true;
+				Set5ShowZones = true;
+				Set5ShowLabels = true;
+				Set6ShowZones = true;
+				Set6ShowLabels = true;
+				Set7ShowZones = true;
+				Set7ShowLabels = true;
+
+				LabelOnRight = false;
+				LabelXOffset = 0;
+				LabelSize = 16;
+				LabelYOffset = 3;
+				LabelBold = false;
+				LabelItalic = false;
+				Set4RightSideLabels = true;
+			}
+			else if (State == State.DataLoaded)
+			{
+				drawingTags = new List<string>();
+				activeRoot = GetDatasetKey();
+
+				if (string.IsNullOrWhiteSpace(activeRoot))
+				{
+					Print(string.Format("NT8LevelsIndicator: unsupported instrument '{0}'.", Instrument != null ? Instrument.FullName : "Unknown"));
+					return;
+				}
+
+				styleCatalog = BuildStyleCatalog();
+				activeSetDescriptors = BuildSetDescriptors();
+				activeLevels = LoadActiveLevels();
+				redrawRequired = true;
+			}
+			else if (State == State.Historical)
+			{
+				SetZOrder(-1);
+			}
+			else if (State == State.Terminated)
+			{
+				ClearPreviousDrawings();
+			}
+		}
+
+		protected override void OnBarUpdate()
+		{
+			if (CurrentBar < 1 || string.IsNullOrWhiteSpace(activeRoot))
+				return;
+
+			if (AutoLoadFromFile)
+				MaybeRefreshFileLevels();
+			else if (activeLevels == null)
+			{
+				activeLevels = BuildLevelsFromProperties(activeRoot);
+				redrawRequired = true;
+			}
+
+			if (activeLevels == null)
+				return;
+
+			int visibleFromIndex = ChartBars != null ? ChartBars.FromIndex : -1;
+			if (visibleFromIndex != lastVisibleFromIndex)
+			{
+				lastVisibleFromIndex = visibleFromIndex;
+				redrawRequired = true;
+			}
+
+			if (redrawRequired || lastRenderedBar != CurrentBar)
+			{
+				ClearPreviousDrawings();
+				DrawActiveLevels();
+				lastRenderedBar = CurrentBar;
+				redrawRequired = false;
+			}
+		}
+
+		#endregion
+
+		#region Loading
+
+		private ParsedLevels LoadActiveLevels()
+		{
+			if (string.IsNullOrWhiteSpace(activeRoot))
+				return null;
+
+			if (AutoLoadFromFile)
+			{
+				lastFileStamp = GetFileStamp(FullLevelsFilePath, activeRoot);
+				return GetOrLoadLevels(FullLevelsFilePath, activeRoot);
+			}
+
+			return BuildLevelsFromProperties(activeRoot);
+		}
+
+		private void MaybeRefreshFileLevels()
+		{
+			if (DateTime.UtcNow < nextFileCheckUtc && activeLevels != null)
+				return;
+
+			nextFileCheckUtc = DateTime.UtcNow.AddSeconds(Math.Max(1, FileCheckIntervalSeconds));
+
+			string newStamp = GetFileStamp(FullLevelsFilePath, activeRoot);
+			if (string.Equals(newStamp, lastFileStamp, StringComparison.Ordinal))
+				return;
+
+			ParsedLevels refreshed = GetOrLoadLevels(FullLevelsFilePath, activeRoot);
+			lastFileStamp = newStamp;
+
+			if (!ReferenceEquals(refreshed, activeLevels))
+			{
+				activeLevels = refreshed;
+				redrawRequired = true;
+			}
+		}
+
+		private string GetFileStamp(string dataFile, string datasetKey)
+		{
+			if (string.IsNullOrWhiteSpace(dataFile) || string.IsNullOrWhiteSpace(datasetKey))
+				return string.Empty;
+
+			if (!File.Exists(dataFile))
+				return string.Empty;
+
+			string fullPath = Path.GetFullPath(dataFile);
+			DateTime writeTimeUtc = File.GetLastWriteTimeUtc(fullPath);
+			return fullPath + "|" + datasetKey + "|" + writeTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture);
+		}
+
+		private string GetDatasetKey()
+		{
+			if (Instrument == null || Instrument.MasterInstrument == null)
+				return null;
+
+			string root = Instrument.MasterInstrument.Name.ToUpperInvariant();
+
+			switch (root)
+			{
+				case "NQ":
+				case "MNQ":
+					return "NQ";
+
+				case "ES":
+				case "MES":
+					return "ES";
+
+				case "YM":
+				case "MYM":
+					return "YM";
+
+				default:
+					return null;
+			}
+		}
+
+		private ParsedLevels GetOrLoadLevels(string dataFile, string datasetKey)
+		{
+			if (string.IsNullOrWhiteSpace(dataFile) || string.IsNullOrWhiteSpace(datasetKey))
+				return null;
+
+			if (!File.Exists(dataFile))
+				return null;
+
+			string fullPath = Path.GetFullPath(dataFile);
+			DateTime writeTimeUtc = File.GetLastWriteTimeUtc(fullPath);
+			string cacheKey = fullPath + "|" + datasetKey;
+
+			lock (cacheLock)
+			{
+				CacheEntry cached;
+				if (levelCache.TryGetValue(cacheKey, out cached) &&
+					cached != null &&
+					cached.Levels != null &&
+					cached.WriteTimeUtc == writeTimeUtc)
+					return cached.Levels;
+
+				ParsedLevels parsed = LoadLevelsFromFile(fullPath, datasetKey);
+				levelCache[cacheKey] = new CacheEntry
+				{
+					WriteTimeUtc = writeTimeUtc,
+					Levels = parsed
+				};
+
+				return parsed;
+			}
+		}
+
+		private ParsedLevels BuildLevelsFromProperties(string datasetKey)
+		{
+			ParsedLevels result = new ParsedLevels { DatasetKey = datasetKey };
+
+			if (!string.IsNullOrWhiteSpace(Set1Data)) result.SetData[1] = Set1Data;
+			if (!string.IsNullOrWhiteSpace(Set2Data)) result.SetData[2] = Set2Data;
+			if (!string.IsNullOrWhiteSpace(Set3Data)) result.SetData[3] = Set3Data;
+			if (!string.IsNullOrWhiteSpace(Set4Data)) result.SetData[4] = Set4Data;
+			if (!string.IsNullOrWhiteSpace(Set5Data)) result.SetData[5] = Set5Data;
+			if (!string.IsNullOrWhiteSpace(Set6Data)) result.SetData[6] = Set6Data;
+			if (!string.IsNullOrWhiteSpace(Set7Data)) result.SetData[7] = Set7Data;
+
+			ExtractLisSegments(result);
+			return result;
+		}
+
+		private ParsedLevels LoadLevelsFromFile(string fullPath, string targetRoot)
+		{
+			ParsedLevels result = new ParsedLevels { DatasetKey = targetRoot };
+			string currentInstrument = null;
+			int currentSet = 0;
+			StringBuilder currentData = new StringBuilder();
+
+			Action flushCurrent = () =>
+			{
+				if (!string.Equals(currentInstrument, targetRoot, StringComparison.OrdinalIgnoreCase))
+					return;
+
+				if (currentSet < 1 || currentSet > 7)
+					return;
+
+				string raw = currentData.ToString().Trim();
+				if (raw.Length == 0)
+					return;
+
+				result.SetData[currentSet] = raw;
+
+				foreach (string lis in ExtractLisTokens(raw))
+					result.LisSegments.Add(lis);
+			};
+
+			foreach (string rawLine in File.ReadLines(fullPath))
+			{
+				string line = rawLine.Trim();
+				if (string.IsNullOrWhiteSpace(line))
+					continue;
+
+				string instrument;
+				int setNumber;
+				string remainder;
+
+				if (TryParseHeader(line, out instrument, out setNumber, out remainder))
+				{
+					flushCurrent();
+
+					currentData.Clear();
+					currentInstrument = instrument;
+					currentSet = setNumber;
+
+					if (!string.IsNullOrWhiteSpace(remainder))
+						currentData.Append(remainder);
+
+					continue;
+				}
+
+				if (!string.Equals(currentInstrument, targetRoot, StringComparison.OrdinalIgnoreCase))
+					continue;
+
+				if (currentSet < 1 || currentSet > 7)
+					continue;
+
+				if (currentData.Length > 0)
+					currentData.Append("|");
+
+				currentData.Append(line);
+			}
+
+			flushCurrent();
+			return result;
+		}
+
+		private bool TryParseHeader(string line, out string instrument, out int setNumber, out string remainder)
+		{
+			instrument = null;
+			setNumber = 0;
+			remainder = null;
+
+			Match m = Regex.Match(
+				line,
+				@"^\s*([A-Za-z]+)\s+SET\s+([1-7])(?:\s*:\s*|\s+)?(.*)$",
+				RegexOptions.IgnoreCase);
+
+			if (!m.Success)
+				return false;
+
+			instrument = m.Groups[1].Value.Trim().ToUpperInvariant();
+
+			int parsedSet;
+			if (!int.TryParse(m.Groups[2].Value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out parsedSet))
+				return false;
+
+			setNumber = parsedSet;
+
+			string tail = m.Groups[3].Value.Trim();
+			remainder = string.IsNullOrWhiteSpace(tail) ? null : tail;
+
+			return true;
+		}
+
+		private void ExtractLisSegments(ParsedLevels result)
+		{
+			foreach (string raw in result.SetData.Values)
+			{
+				foreach (string lis in ExtractLisTokens(raw))
+					result.LisSegments.Add(lis);
+			}
+		}
+
+		private IEnumerable<string> ExtractLisTokens(string raw)
+		{
+			if (string.IsNullOrWhiteSpace(raw))
+				yield break;
+
+			string[] chunks = raw.Split(new[] { '|', ';' }, StringSplitOptions.RemoveEmptyEntries);
+
+			foreach (string chunk in chunks)
+			{
+				string text = chunk.Trim();
+				if (string.IsNullOrWhiteSpace(text))
+					continue;
+
+				if (text.EndsWith("_LIS", StringComparison.OrdinalIgnoreCase))
+				{
+					string pricePart = text.Substring(0, text.Length - 4).Trim('_', ' ', ',');
+					if (!string.IsNullOrWhiteSpace(pricePart))
+						yield return pricePart;
+
+					continue;
+				}
+
+				int lisIdx = text.IndexOf("LIS", StringComparison.OrdinalIgnoreCase);
+				if (lisIdx < 0)
+					continue;
+
+				string lisPart = text.Substring(lisIdx + 3).Trim('_', ' ', ',');
+				if (!string.IsNullOrWhiteSpace(lisPart))
+					yield return lisPart;
+			}
+		}
+
+		#endregion
+
+		#region Draw orchestration
+
+		private Dictionary<string, RenderStyle> BuildStyleCatalog()
+		{
+			Dictionary<string, RenderStyle> d = new Dictionary<string, RenderStyle>(StringComparer.OrdinalIgnoreCase);
+
+			d["S1"] = CreateZoneStyle(Brushes.Green, DashStyleHelper.Solid, 2, Brushes.Green, 30, Brushes.Green, Brushes.White, LabelSize, LabelYOffset, LabelBold, LabelItalic, LabelOnRight, LabelXOffset);
+			d["S2"] = CreateZoneStyle(Brushes.DodgerBlue, DashStyleHelper.Solid, 2, Brushes.DodgerBlue, 25, Brushes.DimGray, Brushes.Yellow, LabelSize, LabelYOffset, LabelBold, LabelItalic, LabelOnRight, LabelXOffset);
+			d["S3"] = CreateSet3Style(Brushes.Orange, DashStyleHelper.Dash, 2, Brushes.Lime, DashStyleHelper.Dash, 2, Brushes.Red, DashStyleHelper.Dash, 2, Brushes.White, LabelSize, LabelYOffset, LabelBold, LabelItalic, LabelOnRight, LabelXOffset);
+			d["S4"] = CreateLineStyle(Brushes.White, DashStyleHelper.Solid, 2, Brushes.Magenta, LabelSize + 1, -5, LabelBold, LabelItalic, Set4RightSideLabels ? true : LabelOnRight, Set4RightSideLabels ? 100 : LabelXOffset);
+			d["S5"] = CreateZoneStyle(Brushes.Green, DashStyleHelper.Solid, 2, Brushes.Green, 30, Brushes.Green, Brushes.White, LabelSize, LabelYOffset, LabelBold, LabelItalic, LabelOnRight, LabelXOffset);
+			d["S6"] = CreateZoneStyle(Brushes.Cyan, DashStyleHelper.Solid, 2, Brushes.Cyan, 30, Brushes.Cyan, Brushes.White, LabelSize, LabelYOffset, LabelBold, LabelItalic, LabelOnRight, LabelXOffset);
+			d["S7"] = CreateZoneStyle(Brushes.Yellow, DashStyleHelper.Solid, 2, Brushes.Yellow, 30, Brushes.Yellow, Brushes.Black, LabelSize, LabelYOffset, LabelBold, LabelItalic, LabelOnRight, LabelXOffset);
+			d["LIS"] = CreateZoneStyle(Brushes.Orange, DashStyleHelper.Solid, 2, Brushes.Orange, 20, Brushes.Orange, Brushes.White, LabelSize, LabelYOffset, LabelBold, LabelItalic, LabelOnRight, LabelXOffset);
+
+			return d;
+		}
+
+		private List<SetDescriptor> BuildSetDescriptors()
+		{
+			return new List<SetDescriptor>
+			{
+				new SetDescriptor { SetNumber = 1, StyleKey = "S1", Kind = SetKind.Set1Like, ShowZones = Set1ShowZones, ShowLabels = Set1ShowLabels },
+				new SetDescriptor { SetNumber = 2, StyleKey = "S2", Kind = SetKind.Set2, ShowZones = Set2ShowZones, ShowLabels = Set2ShowLabels },
+				new SetDescriptor { SetNumber = 3, StyleKey = "S3", Kind = SetKind.Set3, ShowKeyLevels = Set3ShowKeyLevels, ShowKeyLabels = Set3ShowKeyLabels, ShowTimestamp = Set3ShowTimestamp },
+				new SetDescriptor { SetNumber = 4, StyleKey = "S4", Kind = SetKind.Set4, ShowZones = Set4ShowZones, ShowLabels = Set4ShowLabels },
+				new SetDescriptor { SetNumber = 5, StyleKey = "S5", Kind = SetKind.Set1Like, ShowZones = Set5ShowZones, ShowLabels = Set5ShowLabels },
+				new SetDescriptor { SetNumber = 6, StyleKey = "S6", Kind = SetKind.Set1Like, ShowZones = Set6ShowZones, ShowLabels = Set6ShowLabels },
+				new SetDescriptor { SetNumber = 7, StyleKey = "S7", Kind = SetKind.Set1Like, ShowZones = Set7ShowZones, ShowLabels = Set7ShowLabels }
+			};
+		}
+
+		private void DrawActiveLevels()
+		{
+			if (activeLevels == null || activeSetDescriptors == null || styleCatalog == null)
+				return;
+
+			int leftBarsAgo = GetLeftmostVisibleBarsAgo();
+			DateTime startTime = Time[Math.Min(Math.Max(leftBarsAgo, 0), CurrentBar)];
+			DateTime endTime = Time[0].AddDays(10);
+
+			foreach (SetDescriptor desc in activeSetDescriptors)
+			{
+				string rawData;
+				if (!activeLevels.SetData.TryGetValue(desc.SetNumber, out rawData) || string.IsNullOrWhiteSpace(rawData))
+					continue;
+
+				RenderStyle style;
+				if (!styleCatalog.TryGetValue(desc.StyleKey, out style))
+					continue;
+
+				switch (desc.Kind)
+				{
+					case SetKind.Set1Like:
+						DrawSet1Like(rawData, desc.SetNumber, desc.ShowZones, desc.ShowLabels, startTime, endTime, style);
+						break;
+
+					case SetKind.Set2:
+						DrawSet2(rawData, desc.ShowZones, desc.ShowLabels, startTime, endTime, style);
+						break;
+
+					case SetKind.Set3:
+						DrawSet3(rawData, desc.ShowKeyLevels, desc.ShowKeyLabels, desc.ShowTimestamp, startTime, endTime, style);
+						break;
+
+					case SetKind.Set4:
+						DrawSet4(rawData, desc.ShowZones, desc.ShowLabels, startTime, endTime, style);
+						break;
+				}
+			}
+
+			if (ShowLIS && activeLevels.LisSegments.Count > 0)
+			{
+				RenderStyle lisStyle;
+				if (styleCatalog.TryGetValue("LIS", out lisStyle))
+					DrawLIS(string.Join("|", activeLevels.LisSegments), startTime, endTime, lisStyle);
+			}
+		}
+
+		private void ClearPreviousDrawings()
+		{
+			if (drawingTags == null || drawingTags.Count == 0)
+				return;
+
+			for (int i = 0; i < drawingTags.Count; i++)
+				RemoveDrawObject(drawingTags[i]);
+
+			drawingTags.Clear();
+		}
+
+		private int GetLeftmostVisibleBarsAgo()
+		{
+			if (ChartBars != null)
+				return Math.Max(0, Math.Min(CurrentBar - ChartBars.FromIndex, CurrentBar));
+
+			return Math.Min(500, CurrentBar);
+		}
+
+		private int GetLabelBarsAgo(bool labelOnRight, int xOffset)
+		{
+			if (labelOnRight)
+				return Math.Max(0, Math.Min(xOffset, CurrentBar));
+
+			return Math.Max(0, GetLeftmostVisibleBarsAgo() - xOffset);
+		}
+
+		private string MakeTag(params object[] parts)
+		{
+			return string.Join("_", parts.Select(p => Convert.ToString(p, CultureInfo.InvariantCulture)))
+				.Replace(" ", "_")
+				.Replace(",", "_")
+				.Replace(".", "_")
+				.Replace("-", "_")
+				.Replace(":", "_")
+				.Replace("|", "_")
+				.Replace("=", "_");
+		}
+
+		private void DrawTextWithOffset(string tag, string text, int barsAgo, double price, RenderStyle style)
+		{
+			SimpleFont font = new SimpleFont("Arial", style.LabelFontSize)
+			{
+				Bold = style.LabelBold,
+				Italic = style.LabelItalic
+			};
+
+			Draw.Text(
+				this,
+				tag,
+				false,
+				text,
+				barsAgo,
+				price,
+				-style.LabelYOffset,
+				style.LabelTextColor,
+				font,
+				System.Windows.TextAlignment.Left,
+				Brushes.Transparent,
+				style.LabelBackgroundColor,
+				35);
+
+			drawingTags.Add(tag);
+		}
+
+		#endregion
+
+		#region Label helpers
+
+		private string FormatPrice(double price)
+		{
+			return price.ToString("F2", CultureInfo.InvariantCulture);
+		}
+
+		private string FormatFallbackLabel(double top, double bottom)
+		{
+			double hi = Math.Max(top, bottom);
+			double lo = Math.Min(top, bottom);
+
+			if (Math.Abs(hi - lo) < TickSize)
+				return FormatPrice(hi);
+
+			return FormatPrice(lo) + " - " + FormatPrice(hi);
+		}
+
+		private bool TryParseFlagToken(string token, out string name, out string value)
+		{
+			name = null;
+			value = null;
+
+			if (string.IsNullOrWhiteSpace(token))
+				return false;
+
+			string t = token.Trim().ToUpperInvariant();
+			int eq = t.IndexOf('=');
+
+			if (eq > 0 && eq < t.Length - 1)
+			{
+				name = t.Substring(0, eq).Trim();
+				value = t.Substring(eq + 1).Trim();
+				return true;
+			}
+
+			Match compact = Regex.Match(t, @"^([A-Z]+\d)([-+]?\d+)$", RegexOptions.IgnoreCase);
+			if (compact.Success)
+			{
+				name = compact.Groups[1].Value.Trim();
+				value = compact.Groups[2].Value.Trim();
+				return true;
+			}
+
+			return false;
+		}
+
+		private Dictionary<string, string> ExtractFlagMap(IEnumerable<string> parts)
+		{
+			Dictionary<string, string> map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+			foreach (string raw in parts)
+			{
+				string name;
+				string value;
+
+				if (!TryParseFlagToken(raw, out name, out value))
+					continue;
+
+				map[name] = value;
+			}
+
+			return map;
+		}
+
+		private string BuildCompactFlagText(Dictionary<string, string> flags)
+		{
+			string t1 = flags.ContainsKey("T1") ? flags["T1"] : "-";
+			string t2 = flags.ContainsKey("T2") ? flags["T2"] : "-";
+			string o1 = flags.ContainsKey("O1") ? flags["O1"] : "-";
+			string o2 = flags.ContainsKey("O2") ? flags["O2"] : "-";
+
+			return t1 + "/" + t2 + " " + o1 + "/" + o2;
+		}
+
+		private string GetFirstNumericText(IEnumerable<string> parts)
+		{
+			foreach (string part in parts)
+			{
+				double value;
+				if (TryParseDouble(part, out value))
+					return FormatPrice(value);
+			}
+
+			return null;
+		}
+
+		private string GetLastNumericText(IEnumerable<string> parts)
+		{
+			string last = null;
+
+			foreach (string part in parts)
+			{
+				double value;
+				if (TryParseDouble(part, out value))
+					last = FormatPrice(value);
+			}
+
+			return last;
+		}
+
+		private string BuildFlagAwareLabelFromParts(string[] parts, double fallbackTop, double fallbackBottom, string fallbackText = null)
+		{
+			if (parts == null || parts.Length == 0)
+				return fallbackText ?? FormatFallbackLabel(fallbackTop, fallbackBottom);
+
+			List<string> cleaned = parts
+				.Where(x => !string.IsNullOrWhiteSpace(x))
+				.Select(x => x.Trim())
+				.ToList();
+
+			if (cleaned.Count == 0)
+				return fallbackText ?? FormatFallbackLabel(fallbackTop, fallbackBottom);
+
+			string firstPriceText = GetFirstNumericText(cleaned);
+			string lastPriceText = GetLastNumericText(cleaned);
+			Dictionary<string, string> flags = ExtractFlagMap(cleaned);
+
+			if (!string.IsNullOrWhiteSpace(firstPriceText) &&
+				!string.IsNullOrWhiteSpace(lastPriceText) &&
+				flags.Count > 0)
+				return firstPriceText + " | " + BuildCompactFlagText(flags) + " | " + lastPriceText;
+
+			return fallbackText ?? FormatFallbackLabel(fallbackTop, fallbackBottom);
+		}
+
+		private string BuildSet3Label(string name, double value)
+		{
+			return name + " | " + FormatPrice(value);
+		}
+
+		private bool TryParseFirstAndLastNumeric(string[] parts, out double first, out double last)
+		{
+			first = 0;
+			last = 0;
+			bool foundFirst = false;
+			bool foundLast = false;
+
+			for (int i = 0; i < parts.Length; i++)
+			{
+				double v;
+				if (TryParseDouble(parts[i], out v))
+				{
+					first = v;
+					foundFirst = true;
+					break;
+				}
+			}
+
+			for (int i = parts.Length - 1; i >= 0; i--)
+			{
+				double v;
+				if (TryParseDouble(parts[i], out v))
+				{
+					last = v;
+					foundLast = true;
+					break;
+				}
+			}
+
+			return foundFirst && foundLast;
+		}
+
+		private bool TryParseDouble(string s, out double value)
+		{
+			return double.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out value)
+				|| double.TryParse(s, NumberStyles.Any, CultureInfo.CurrentCulture, out value);
+		}
+
+		#endregion
+
+		#region Style builders
+
+		private RenderStyle CreateZoneStyle(
+			Brush lineColor,
+			DashStyleHelper lineStyle,
+			int lineWidth,
+			Brush zoneColor,
+			int zoneOpacity,
+			Brush labelBackgroundColor,
+			Brush labelTextColor,
+			int labelSize,
+			int labelYOffset,
+			bool labelBold,
+			bool labelItalic,
+			bool labelOnRight,
+			int xOffset)
+		{
+			return new RenderStyle
+			{
+				LineColor = lineColor,
+				LineStyle = lineStyle,
+				LineWidth = lineWidth,
+				ZoneColor = zoneColor,
+				ZoneOpacity = zoneOpacity,
+				LabelBackgroundColor = labelBackgroundColor,
+				LabelTextColor = labelTextColor,
+				LabelFontSize = labelSize,
+				LabelYOffset = labelYOffset,
+				LabelBold = labelBold,
+				LabelItalic = labelItalic,
+				LabelOnRight = labelOnRight,
+				LabelXOffset = xOffset
+			};
+		}
+
+		private RenderStyle CreateLineStyle(
+			Brush lineColor,
+			DashStyleHelper lineStyle,
+			int lineWidth,
+			Brush labelTextColor,
+			int labelSize,
+			int labelYOffset,
+			bool labelBold,
+			bool labelItalic,
+			bool labelOnRight,
+			int xOffset)
+		{
+			return new RenderStyle
+			{
+				LineColor = lineColor,
+				LineStyle = lineStyle,
+				LineWidth = lineWidth,
+				LabelBackgroundColor = Brushes.Transparent,
+				LabelTextColor = labelTextColor,
+				LabelFontSize = labelSize,
+				LabelYOffset = labelYOffset,
+				LabelBold = labelBold,
+				LabelItalic = labelItalic,
+				LabelOnRight = labelOnRight,
+				LabelXOffset = xOffset
+			};
+		}
+
+		private RenderStyle CreateSet3Style(
+			Brush midColor,
+			DashStyleHelper midStyle,
+			int midWidth,
+			Brush lowerColor,
+			DashStyleHelper lowerStyle,
+			int lowerWidth,
+			Brush upperColor,
+			DashStyleHelper upperStyle,
+			int upperWidth,
+			Brush labelTextColor,
+			int labelSize,
+			int labelYOffset,
+			bool labelBold,
+			bool labelItalic,
+			bool labelOnRight,
+			int xOffset)
+		{
+			return new RenderStyle
+			{
+				MidLineColor = midColor,
+				MidLineStyle = midStyle,
+				MidLineWidth = midWidth,
+				LowerLineColor = lowerColor,
+				LowerLineStyle = lowerStyle,
+				LowerLineWidth = lowerWidth,
+				UpperLineColor = upperColor,
+				UpperLineStyle = upperStyle,
+				UpperLineWidth = upperWidth,
+				LabelBackgroundColor = Brushes.Transparent,
+				LabelTextColor = labelTextColor,
+				LabelFontSize = labelSize,
+				LabelYOffset = labelYOffset,
+				LabelBold = labelBold,
+				LabelItalic = labelItalic,
+				LabelOnRight = labelOnRight,
+				LabelXOffset = xOffset
+			};
+		}
+
+		#endregion
+
+		#region Drawers
+
+		private void DrawSet1Like(string rawData, int setNumber, bool showZones, bool showLabels, DateTime startTime, DateTime endTime, RenderStyle style)
+		{
+			if (!showZones && !showLabels)
+				return;
+
+			foreach (string seg in rawData.Split(new[] { '|', ';' }, StringSplitOptions.RemoveEmptyEntries))
+			{
+				string trimmed = seg.Trim();
+				if (string.IsNullOrWhiteSpace(trimmed))
+					continue;
+
+				if (trimmed.IndexOf("LIS", StringComparison.OrdinalIgnoreCase) >= 0)
+					continue;
+
+				string[] p = trimmed.Split(',');
+				double top, bottom;
+
+				if (!TryParseFirstAndLastNumeric(p, out top, out bottom))
+					continue;
+
+				double hi = Math.Max(top, bottom);
+				double lo = Math.Min(top, bottom);
+				double mid = (hi + lo) / 2.0;
+				string baseTag = MakeTag(activeRoot, "S", setNumber, hi, lo);
+
+				if (showZones)
+				{
+					if (Math.Abs(hi - lo) < TickSize)
+					{
+						string lineTag = MakeTag(baseTag, "LINE");
+						Draw.Line(this, lineTag, false, startTime, mid, endTime, mid, style.LineColor, style.LineStyle, style.LineWidth);
+						drawingTags.Add(lineTag);
+					}
+					else
+					{
+						string zoneTag = MakeTag(baseTag, "ZONE");
+						Draw.Rectangle(this, zoneTag, false, startTime, hi, endTime, lo, style.LabelBackgroundColor, style.ZoneColor, style.ZoneOpacity);
+						drawingTags.Add(zoneTag);
+					}
+				}
+
+				if (showLabels)
+				{
+					string labelText = BuildFlagAwareLabelFromParts(p, top, bottom);
+					DrawTextWithOffset(MakeTag(baseTag, "LBL"), labelText, GetLabelBarsAgo(style.LabelOnRight, style.LabelXOffset), hi, style);
+				}
+			}
+		}
+
+		private void DrawSet2(string rawData, bool showZones, bool showLabels, DateTime startTime, DateTime endTime, RenderStyle style)
+		{
+			if (!showZones && !showLabels)
+				return;
+
+			foreach (string seg in rawData.Split(new[] { '|', ';' }, StringSplitOptions.RemoveEmptyEntries))
+			{
+				string trimmed = seg.Trim();
+				if (string.IsNullOrWhiteSpace(trimmed))
+					continue;
+
+				if (trimmed.IndexOf("LIS", StringComparison.OrdinalIgnoreCase) >= 0)
+					continue;
+
+				if (trimmed.Contains(","))
+				{
+					string[] p = trimmed.Split(',');
+					double top, bottom;
+
+					if (!TryParseFirstAndLastNumeric(p, out top, out bottom))
+						continue;
+
+					double hi = Math.Max(top, bottom);
+					double lo = Math.Min(top, bottom);
+					string baseTag = MakeTag(activeRoot, "S2", hi, lo);
+
+					if (showZones)
+					{
+						string zoneTag = MakeTag(baseTag, "ZONE");
+						Draw.Rectangle(this, zoneTag, false, startTime, hi, endTime, lo, style.LabelBackgroundColor, style.ZoneColor, style.ZoneOpacity);
+						drawingTags.Add(zoneTag);
+					}
+
+					if (showLabels)
+					{
+						string fallbackLabel = FormatFallbackLabel(top, bottom);
+						string labelText = BuildFlagAwareLabelFromParts(p, top, bottom, fallbackLabel);
+						DrawTextWithOffset(MakeTag(baseTag, "LBL"), labelText, GetLabelBarsAgo(style.LabelOnRight, style.LabelXOffset), hi, style);
+					}
+				}
+				else
+				{
+					double level;
+					if (!TryParseDouble(trimmed, out level))
+						continue;
+
+					string baseTag = MakeTag(activeRoot, "S2", level);
+
+					if (showZones)
+					{
+						string lineTag = MakeTag(baseTag, "LINE");
+						Draw.Line(this, lineTag, false, startTime, level, endTime, level, style.LineColor, style.LineStyle, style.LineWidth);
+						drawingTags.Add(lineTag);
+					}
+
+					if (showLabels)
+						DrawTextWithOffset(MakeTag(baseTag, "LBL"), FormatPrice(level), GetLabelBarsAgo(style.LabelOnRight, style.LabelXOffset), level, style);
+				}
+			}
+		}
+
+		private void DrawSet3(string rawData, bool showKeyLevels, bool showKeyLabels, bool showTimestamp, DateTime startTime, DateTime endTime, RenderStyle style)
+		{
+			if (!showKeyLevels && !showTimestamp)
+				return;
+
+			double? mid = null;
+			double? lower = null;
+			double? upper = null;
+			string timestampText = null;
+
+			foreach (string item in rawData.Split(new[] { '|', ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
+			{
+				string trimmed = item.Trim();
+				if (string.IsNullOrWhiteSpace(trimmed))
+					continue;
+
+				if (trimmed.StartsWith("Time", StringComparison.OrdinalIgnoreCase) || trimmed.StartsWith("Timestamp", StringComparison.OrdinalIgnoreCase))
+				{
+					int idx = trimmed.IndexOf(':');
+					if (idx > -1 && idx < trimmed.Length - 1)
+						timestampText = trimmed.Substring(idx + 1).Trim();
+
+					continue;
+				}
+
+				string[] kv = trimmed.Split(':');
+				if (kv.Length != 2)
+					continue;
+
+				string key = kv[0].Trim();
+				string val = kv[1].Trim();
+
+				double parsed;
+				if (key.Equals("Mid", StringComparison.OrdinalIgnoreCase) && TryParseDouble(val, out parsed))
+					mid = parsed;
+				else if (key.Equals("Lower", StringComparison.OrdinalIgnoreCase) && TryParseDouble(val, out parsed))
+					lower = parsed;
+				else if (key.Equals("Upper", StringComparison.OrdinalIgnoreCase) && TryParseDouble(val, out parsed))
+					upper = parsed;
+			}
+
+			if (showTimestamp && !string.IsNullOrWhiteSpace(timestampText))
+			{
+				double y = Close[0];
+				DrawTextWithOffset(MakeTag(activeRoot, "S3TS"), "Time | " + timestampText, GetLabelBarsAgo(style.LabelOnRight, style.LabelXOffset), y, style);
+			}
+
+			if (!showKeyLevels)
+				return;
+
+			if (mid.HasValue)
+			{
+				string tag = MakeTag(activeRoot, "S3M");
+				Draw.Line(this, tag, false, startTime, mid.Value, endTime, mid.Value, style.MidLineColor, style.MidLineStyle, style.MidLineWidth);
+				drawingTags.Add(tag);
+
+				if (showKeyLabels)
+					DrawTextWithOffset(MakeTag(activeRoot, "S3ML"), BuildSet3Label("Mid", mid.Value), GetLabelBarsAgo(style.LabelOnRight, style.LabelXOffset), mid.Value, style);
+			}
+
+			if (lower.HasValue)
+			{
+				string tag = MakeTag(activeRoot, "S3L");
+				Draw.Line(this, tag, false, startTime, lower.Value, endTime, lower.Value, style.LowerLineColor, style.LowerLineStyle, style.LowerLineWidth);
+				drawingTags.Add(tag);
+
+				if (showKeyLabels)
+					DrawTextWithOffset(MakeTag(activeRoot, "S3LL"), BuildSet3Label("Lower", lower.Value), GetLabelBarsAgo(style.LabelOnRight, style.LabelXOffset), lower.Value, style);
+			}
+
+			if (upper.HasValue)
+			{
+				string tag = MakeTag(activeRoot, "S3U");
+				Draw.Line(this, tag, false, startTime, upper.Value, endTime, upper.Value, style.UpperLineColor, style.UpperLineStyle, style.UpperLineWidth);
+				drawingTags.Add(tag);
+
+				if (showKeyLabels)
+					DrawTextWithOffset(MakeTag(activeRoot, "S3UL"), BuildSet3Label("Upper", upper.Value), GetLabelBarsAgo(style.LabelOnRight, style.LabelXOffset), upper.Value, style);
+			}
+		}
+
+		private void DrawSet4(string rawData, bool showZones, bool showLabels, DateTime startTime, DateTime endTime, RenderStyle style)
+		{
+			if (!showZones && !showLabels)
+				return;
+
+			foreach (string seg in rawData.Split(new[] { '|', ';' }, StringSplitOptions.RemoveEmptyEntries))
+			{
+				string trimmed = seg.Trim();
+				if (string.IsNullOrWhiteSpace(trimmed))
+					continue;
+
+				string prc = trimmed;
+				string lbl = trimmed;
+
+				int dashIdx = trimmed.IndexOf('-');
+				if (dashIdx > 0)
+				{
+					prc = trimmed.Substring(0, dashIdx).Trim();
+					lbl = trimmed.Substring(dashIdx + 1).Trim();
+				}
+
+				double level;
+				if (!TryParseDouble(prc, out level))
+					continue;
+
+				string baseTag = MakeTag(activeRoot, "S4", level);
+
+				if (showZones)
+				{
+					string lineTag = MakeTag(baseTag, "LINE");
+					Draw.Line(this, lineTag, false, startTime, level, endTime, level, style.LineColor, style.LineStyle, style.LineWidth);
+					drawingTags.Add(lineTag);
+				}
+
+				if (showLabels)
+					DrawTextWithOffset(MakeTag(baseTag, "LBL"), FormatPrice(level) + " | " + lbl, GetLabelBarsAgo(style.LabelOnRight, style.LabelXOffset), level, style);
+			}
+		}
+
+		private void DrawLIS(string rawData, DateTime startTime, DateTime endTime, RenderStyle style)
+		{
+			foreach (string seg in rawData.Split(new[] { '|', ';' }, StringSplitOptions.RemoveEmptyEntries))
+			{
+				string trimmed = seg.Trim();
+				if (string.IsNullOrWhiteSpace(trimmed))
+					continue;
+
+				if (trimmed.Contains(","))
+				{
+					string[] p = trimmed.Split(',');
+					double top, bottom;
+					if (!TryParseFirstAndLastNumeric(p, out top, out bottom))
+						continue;
+
+					double hi = Math.Max(top, bottom);
+					double lo = Math.Min(top, bottom);
+					string baseTag = MakeTag(activeRoot, "LIS", hi, lo);
+
+					if (Math.Abs(hi - lo) < TickSize)
+					{
+						string lineTag = MakeTag(baseTag, "LINE");
+						Draw.Line(this, lineTag, false, startTime, hi, endTime, hi, style.LineColor, style.LineStyle, style.LineWidth);
+						drawingTags.Add(lineTag);
+					}
+					else
+					{
+						string zoneTag = MakeTag(baseTag, "ZONE");
+						Draw.Rectangle(this, zoneTag, false, startTime, hi, endTime, lo, style.LabelBackgroundColor, style.ZoneColor, style.ZoneOpacity);
+						drawingTags.Add(zoneTag);
+					}
+
+					DrawTextWithOffset(MakeTag(baseTag, "LBL"), "LIS | " + FormatFallbackLabel(top, bottom), GetLabelBarsAgo(style.LabelOnRight, style.LabelXOffset), hi, style);
+				}
+				else
+				{
+					double level;
+					if (!TryParseDouble(trimmed, out level))
+						continue;
+
+					string baseTag = MakeTag(activeRoot, "LIS", level);
+					string lineTag = MakeTag(baseTag, "LINE");
+					Draw.Line(this, lineTag, false, startTime, level, endTime, level, style.LineColor, style.LineStyle, style.LineWidth);
+					drawingTags.Add(lineTag);
+
+					DrawTextWithOffset(MakeTag(baseTag, "LBL"), "LIS | " + FormatPrice(level), GetLabelBarsAgo(style.LabelOnRight, style.LabelXOffset), level, style);
+				}
+			}
+		}
+
+		#endregion
+
+		#region Properties
+
+		[NinjaScriptProperty]
+		[Display(Name = "FullLevelsFilePath", GroupName = "01. Engine", Order = 0)]
+		public string FullLevelsFilePath { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "AutoLoadFromFile", GroupName = "01. Engine", Order = 1)]
+		public bool AutoLoadFromFile { get; set; }
+
+		[NinjaScriptProperty]
+		[Range(1, 300)]
+		[Display(Name = "FileCheckIntervalSeconds", GroupName = "01. Engine", Order = 2)]
+		public int FileCheckIntervalSeconds { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "ShowLIS", GroupName = "01. Engine", Order = 3)]
+		public bool ShowLIS { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set1Data", GroupName = "02. Manual Data", Order = 10)]
+		public string Set1Data { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set2Data", GroupName = "02. Manual Data", Order = 11)]
+		public string Set2Data { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set3Data", GroupName = "02. Manual Data", Order = 12)]
+		public string Set3Data { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set4Data", GroupName = "02. Manual Data", Order = 13)]
+		public string Set4Data { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set5Data", GroupName = "02. Manual Data", Order = 14)]
+		public string Set5Data { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set6Data", GroupName = "02. Manual Data", Order = 15)]
+		public string Set6Data { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set7Data", GroupName = "02. Manual Data", Order = 16)]
+		public string Set7Data { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set1ShowZones", GroupName = "03. Visibility", Order = 20)]
+		public bool Set1ShowZones { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set1ShowLabels", GroupName = "03. Visibility", Order = 21)]
+		public bool Set1ShowLabels { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set2ShowZones", GroupName = "03. Visibility", Order = 22)]
+		public bool Set2ShowZones { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set2ShowLabels", GroupName = "03. Visibility", Order = 23)]
+		public bool Set2ShowLabels { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set3ShowKeyLevels", GroupName = "03. Visibility", Order = 24)]
+		public bool Set3ShowKeyLevels { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set3ShowKeyLabels", GroupName = "03. Visibility", Order = 25)]
+		public bool Set3ShowKeyLabels { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set3ShowTimestamp", GroupName = "03. Visibility", Order = 26)]
+		public bool Set3ShowTimestamp { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set4ShowZones", GroupName = "03. Visibility", Order = 27)]
+		public bool Set4ShowZones { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set4ShowLabels", GroupName = "03. Visibility", Order = 28)]
+		public bool Set4ShowLabels { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set5ShowZones", GroupName = "03. Visibility", Order = 29)]
+		public bool Set5ShowZones { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set5ShowLabels", GroupName = "03. Visibility", Order = 30)]
+		public bool Set5ShowLabels { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set6ShowZones", GroupName = "03. Visibility", Order = 31)]
+		public bool Set6ShowZones { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set6ShowLabels", GroupName = "03. Visibility", Order = 32)]
+		public bool Set6ShowLabels { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set7ShowZones", GroupName = "03. Visibility", Order = 33)]
+		public bool Set7ShowZones { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set7ShowLabels", GroupName = "03. Visibility", Order = 34)]
+		public bool Set7ShowLabels { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "LabelOnRight", GroupName = "04. Labels", Order = 40)]
+		public bool LabelOnRight { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "LabelXOffset", GroupName = "04. Labels", Order = 41)]
+		public int LabelXOffset { get; set; }
+
+		[NinjaScriptProperty]
+		[Range(6, 30)]
+		[Display(Name = "LabelSize", GroupName = "04. Labels", Order = 42)]
+		public int LabelSize { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "LabelYOffset", GroupName = "04. Labels", Order = 43)]
+		public int LabelYOffset { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "LabelBold", GroupName = "04. Labels", Order = 44)]
+		public bool LabelBold { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "LabelItalic", GroupName = "04. Labels", Order = 45)]
+		public bool LabelItalic { get; set; }
+
+		[NinjaScriptProperty]
+		[Display(Name = "Set4RightSideLabels", GroupName = "04. Labels", Order = 46)]
+		public bool Set4RightSideLabels { get; set; }
+
+		#endregion
+	}
+}
+
+#region NinjaScript generated code. Neither change nor remove.
+
+namespace NinjaTrader.NinjaScript.Indicators
+{
+	public partial class Indicator : NinjaTrader.Gui.NinjaScript.IndicatorRenderBase
+	{
+		private NT8LevelsIndicator[] cacheNT8LevelsIndicator;
+		public NT8LevelsIndicator NT8LevelsIndicator(string fullLevelsFilePath, bool autoLoadFromFile, int fileCheckIntervalSeconds, bool showLIS, string set1Data, string set2Data, string set3Data, string set4Data, string set5Data, string set6Data, string set7Data, bool set1ShowZones, bool set1ShowLabels, bool set2ShowZones, bool set2ShowLabels, bool set3ShowKeyLevels, bool set3ShowKeyLabels, bool set3ShowTimestamp, bool set4ShowZones, bool set4ShowLabels, bool set5ShowZones, bool set5ShowLabels, bool set6ShowZones, bool set6ShowLabels, bool set7ShowZones, bool set7ShowLabels, bool labelOnRight, int labelXOffset, int labelSize, int labelYOffset, bool labelBold, bool labelItalic, bool set4RightSideLabels)
+		{
+			return NT8LevelsIndicator(Input, fullLevelsFilePath, autoLoadFromFile, fileCheckIntervalSeconds, showLIS, set1Data, set2Data, set3Data, set4Data, set5Data, set6Data, set7Data, set1ShowZones, set1ShowLabels, set2ShowZones, set2ShowLabels, set3ShowKeyLevels, set3ShowKeyLabels, set3ShowTimestamp, set4ShowZones, set4ShowLabels, set5ShowZones, set5ShowLabels, set6ShowZones, set6ShowLabels, set7ShowZones, set7ShowLabels, labelOnRight, labelXOffset, labelSize, labelYOffset, labelBold, labelItalic, set4RightSideLabels);
+		}
+
+		public NT8LevelsIndicator NT8LevelsIndicator(ISeries<double> input, string fullLevelsFilePath, bool autoLoadFromFile, int fileCheckIntervalSeconds, bool showLIS, string set1Data, string set2Data, string set3Data, string set4Data, string set5Data, string set6Data, string set7Data, bool set1ShowZones, bool set1ShowLabels, bool set2ShowZones, bool set2ShowLabels, bool set3ShowKeyLevels, bool set3ShowKeyLabels, bool set3ShowTimestamp, bool set4ShowZones, bool set4ShowLabels, bool set5ShowZones, bool set5ShowLabels, bool set6ShowZones, bool set6ShowLabels, bool set7ShowZones, bool set7ShowLabels, bool labelOnRight, int labelXOffset, int labelSize, int labelYOffset, bool labelBold, bool labelItalic, bool set4RightSideLabels)
+		{
+			if (cacheNT8LevelsIndicator != null)
+				for (int idx = 0; idx < cacheNT8LevelsIndicator.Length; idx++)
+					if (cacheNT8LevelsIndicator[idx] != null && cacheNT8LevelsIndicator[idx].FullLevelsFilePath == fullLevelsFilePath && cacheNT8LevelsIndicator[idx].AutoLoadFromFile == autoLoadFromFile && cacheNT8LevelsIndicator[idx].FileCheckIntervalSeconds == fileCheckIntervalSeconds && cacheNT8LevelsIndicator[idx].ShowLIS == showLIS && cacheNT8LevelsIndicator[idx].Set1Data == set1Data && cacheNT8LevelsIndicator[idx].Set2Data == set2Data && cacheNT8LevelsIndicator[idx].Set3Data == set3Data && cacheNT8LevelsIndicator[idx].Set4Data == set4Data && cacheNT8LevelsIndicator[idx].Set5Data == set5Data && cacheNT8LevelsIndicator[idx].Set6Data == set6Data && cacheNT8LevelsIndicator[idx].Set7Data == set7Data && cacheNT8LevelsIndicator[idx].Set1ShowZones == set1ShowZones && cacheNT8LevelsIndicator[idx].Set1ShowLabels == set1ShowLabels && cacheNT8LevelsIndicator[idx].Set2ShowZones == set2ShowZones && cacheNT8LevelsIndicator[idx].Set2ShowLabels == set2ShowLabels && cacheNT8LevelsIndicator[idx].Set3ShowKeyLevels == set3ShowKeyLevels && cacheNT8LevelsIndicator[idx].Set3ShowKeyLabels == set3ShowKeyLabels && cacheNT8LevelsIndicator[idx].Set3ShowTimestamp == set3ShowTimestamp && cacheNT8LevelsIndicator[idx].Set4ShowZones == set4ShowZones && cacheNT8LevelsIndicator[idx].Set4ShowLabels == set4ShowLabels && cacheNT8LevelsIndicator[idx].Set5ShowZones == set5ShowZones && cacheNT8LevelsIndicator[idx].Set5ShowLabels == set5ShowLabels && cacheNT8LevelsIndicator[idx].Set6ShowZones == set6ShowZones && cacheNT8LevelsIndicator[idx].Set6ShowLabels == set6ShowLabels && cacheNT8LevelsIndicator[idx].Set7ShowZones == set7ShowZones && cacheNT8LevelsIndicator[idx].Set7ShowLabels == set7ShowLabels && cacheNT8LevelsIndicator[idx].LabelOnRight == labelOnRight && cacheNT8LevelsIndicator[idx].LabelXOffset == labelXOffset && cacheNT8LevelsIndicator[idx].LabelSize == labelSize && cacheNT8LevelsIndicator[idx].LabelYOffset == labelYOffset && cacheNT8LevelsIndicator[idx].LabelBold == labelBold && cacheNT8LevelsIndicator[idx].LabelItalic == labelItalic && cacheNT8LevelsIndicator[idx].Set4RightSideLabels == set4RightSideLabels && cacheNT8LevelsIndicator[idx].EqualsInput(input))
+						return cacheNT8LevelsIndicator[idx];
+			return CacheIndicator<NT8LevelsIndicator>(new NT8LevelsIndicator(){ FullLevelsFilePath = fullLevelsFilePath, AutoLoadFromFile = autoLoadFromFile, FileCheckIntervalSeconds = fileCheckIntervalSeconds, ShowLIS = showLIS, Set1Data = set1Data, Set2Data = set2Data, Set3Data = set3Data, Set4Data = set4Data, Set5Data = set5Data, Set6Data = set6Data, Set7Data = set7Data, Set1ShowZones = set1ShowZones, Set1ShowLabels = set1ShowLabels, Set2ShowZones = set2ShowZones, Set2ShowLabels = set2ShowLabels, Set3ShowKeyLevels = set3ShowKeyLevels, Set3ShowKeyLabels = set3ShowKeyLabels, Set3ShowTimestamp = set3ShowTimestamp, Set4ShowZones = set4ShowZones, Set4ShowLabels = set4ShowLabels, Set5ShowZones = set5ShowZones, Set5ShowLabels = set5ShowLabels, Set6ShowZones = set6ShowZones, Set6ShowLabels = set6ShowLabels, Set7ShowZones = set7ShowZones, Set7ShowLabels = set7ShowLabels, LabelOnRight = labelOnRight, LabelXOffset = labelXOffset, LabelSize = labelSize, LabelYOffset = labelYOffset, LabelBold = labelBold, LabelItalic = labelItalic, Set4RightSideLabels = set4RightSideLabels }, input, ref cacheNT8LevelsIndicator);
+		}
+	}
+}
+
+namespace NinjaTrader.NinjaScript.MarketAnalyzerColumns
+{
+	public partial class MarketAnalyzerColumn : MarketAnalyzerColumnBase
+	{
+		public Indicators.NT8LevelsIndicator NT8LevelsIndicator(string fullLevelsFilePath, bool autoLoadFromFile, int fileCheckIntervalSeconds, bool showLIS, string set1Data, string set2Data, string set3Data, string set4Data, string set5Data, string set6Data, string set7Data, bool set1ShowZones, bool set1ShowLabels, bool set2ShowZones, bool set2ShowLabels, bool set3ShowKeyLevels, bool set3ShowKeyLabels, bool set3ShowTimestamp, bool set4ShowZones, bool set4ShowLabels, bool set5ShowZones, bool set5ShowLabels, bool set6ShowZones, bool set6ShowLabels, bool set7ShowZones, bool set7ShowLabels, bool labelOnRight, int labelXOffset, int labelSize, int labelYOffset, bool labelBold, bool labelItalic, bool set4RightSideLabels)
+		{
+			return indicator.NT8LevelsIndicator(Input, fullLevelsFilePath, autoLoadFromFile, fileCheckIntervalSeconds, showLIS, set1Data, set2Data, set3Data, set4Data, set5Data, set6Data, set7Data, set1ShowZones, set1ShowLabels, set2ShowZones, set2ShowLabels, set3ShowKeyLevels, set3ShowKeyLabels, set3ShowTimestamp, set4ShowZones, set4ShowLabels, set5ShowZones, set5ShowLabels, set6ShowZones, set6ShowLabels, set7ShowZones, set7ShowLabels, labelOnRight, labelXOffset, labelSize, labelYOffset, labelBold, labelItalic, set4RightSideLabels);
+		}
+
+		public Indicators.NT8LevelsIndicator NT8LevelsIndicator(ISeries<double> input , string fullLevelsFilePath, bool autoLoadFromFile, int fileCheckIntervalSeconds, bool showLIS, string set1Data, string set2Data, string set3Data, string set4Data, string set5Data, string set6Data, string set7Data, bool set1ShowZones, bool set1ShowLabels, bool set2ShowZones, bool set2ShowLabels, bool set3ShowKeyLevels, bool set3ShowKeyLabels, bool set3ShowTimestamp, bool set4ShowZones, bool set4ShowLabels, bool set5ShowZones, bool set5ShowLabels, bool set6ShowZones, bool set6ShowLabels, bool set7ShowZones, bool set7ShowLabels, bool labelOnRight, int labelXOffset, int labelSize, int labelYOffset, bool labelBold, bool labelItalic, bool set4RightSideLabels)
+		{
+			return indicator.NT8LevelsIndicator(input, fullLevelsFilePath, autoLoadFromFile, fileCheckIntervalSeconds, showLIS, set1Data, set2Data, set3Data, set4Data, set5Data, set6Data, set7Data, set1ShowZones, set1ShowLabels, set2ShowZones, set2ShowLabels, set3ShowKeyLevels, set3ShowKeyLabels, set3ShowTimestamp, set4ShowZones, set4ShowLabels, set5ShowZones, set5ShowLabels, set6ShowZones, set6ShowLabels, set7ShowZones, set7ShowLabels, labelOnRight, labelXOffset, labelSize, labelYOffset, labelBold, labelItalic, set4RightSideLabels);
+		}
+	}
+}
+
+namespace NinjaTrader.NinjaScript.Strategies
+{
+	public partial class Strategy : NinjaTrader.Gui.NinjaScript.StrategyRenderBase
+	{
+		public Indicators.NT8LevelsIndicator NT8LevelsIndicator(string fullLevelsFilePath, bool autoLoadFromFile, int fileCheckIntervalSeconds, bool showLIS, string set1Data, string set2Data, string set3Data, string set4Data, string set5Data, string set6Data, string set7Data, bool set1ShowZones, bool set1ShowLabels, bool set2ShowZones, bool set2ShowLabels, bool set3ShowKeyLevels, bool set3ShowKeyLabels, bool set3ShowTimestamp, bool set4ShowZones, bool set4ShowLabels, bool set5ShowZones, bool set5ShowLabels, bool set6ShowZones, bool set6ShowLabels, bool set7ShowZones, bool set7ShowLabels, bool labelOnRight, int labelXOffset, int labelSize, int labelYOffset, bool labelBold, bool labelItalic, bool set4RightSideLabels)
+		{
+			return indicator.NT8LevelsIndicator(Input, fullLevelsFilePath, autoLoadFromFile, fileCheckIntervalSeconds, showLIS, set1Data, set2Data, set3Data, set4Data, set5Data, set6Data, set7Data, set1ShowZones, set1ShowLabels, set2ShowZones, set2ShowLabels, set3ShowKeyLevels, set3ShowKeyLabels, set3ShowTimestamp, set4ShowZones, set4ShowLabels, set5ShowZones, set5ShowLabels, set6ShowZones, set6ShowLabels, set7ShowZones, set7ShowLabels, labelOnRight, labelXOffset, labelSize, labelYOffset, labelBold, labelItalic, set4RightSideLabels);
+		}
+
+		public Indicators.NT8LevelsIndicator NT8LevelsIndicator(ISeries<double> input , string fullLevelsFilePath, bool autoLoadFromFile, int fileCheckIntervalSeconds, bool showLIS, string set1Data, string set2Data, string set3Data, string set4Data, string set5Data, string set6Data, string set7Data, bool set1ShowZones, bool set1ShowLabels, bool set2ShowZones, bool set2ShowLabels, bool set3ShowKeyLevels, bool set3ShowKeyLabels, bool set3ShowTimestamp, bool set4ShowZones, bool set4ShowLabels, bool set5ShowZones, bool set5ShowLabels, bool set6ShowZones, bool set6ShowLabels, bool set7ShowZones, bool set7ShowLabels, bool labelOnRight, int labelXOffset, int labelSize, int labelYOffset, bool labelBold, bool labelItalic, bool set4RightSideLabels)
+		{
+			return indicator.NT8LevelsIndicator(input, fullLevelsFilePath, autoLoadFromFile, fileCheckIntervalSeconds, showLIS, set1Data, set2Data, set3Data, set4Data, set5Data, set6Data, set7Data, set1ShowZones, set1ShowLabels, set2ShowZones, set2ShowLabels, set3ShowKeyLevels, set3ShowKeyLabels, set3ShowTimestamp, set4ShowZones, set4ShowLabels, set5ShowZones, set5ShowLabels, set6ShowZones, set6ShowLabels, set7ShowZones, set7ShowLabels, labelOnRight, labelXOffset, labelSize, labelYOffset, labelBold, labelItalic, set4RightSideLabels);
+		}
+	}
+}
+
+#endregion
