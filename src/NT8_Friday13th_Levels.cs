@@ -141,23 +141,23 @@ namespace NinjaTrader.NinjaScript.Indicators.Friday13th
                 AutoLoadFromFile   = true;
 
                 // Show/hide
-                S1ShowZones = true;  S1ShowLabels = true;
+                S1ShowZones = false; S1ShowLabels = false;
                 S2ShowZones = true;  S2ShowLabels = true;
                 S3ShowKeyLevels = true; S3ShowKeyLabels = true; S3ShowTimestamp = false;
                 S4ShowZones = true;  S4ShowLabels = true;
                 S5ShowZones = true;  S5ShowLabels = true;
-                S6ShowZones = true;  S6ShowLabels = true;
+                S6ShowZones = false; S6ShowLabels = false;
                 S7ShowZones = true;  S7ShowLabels = true;
                 // S1 defaults
-                S1LabelOffset = 59; S1LabelSize = 8;
+                S1LabelOffset = -20; S1LabelSize = 8;
                 S1LabelBG = MakeFrozenBrush(Color.FromArgb(75, 0x44, 0xa5, 0x48));
                 S1LabelTextColor = Brushes.White;
                 S1LineColor = MakeFrozenBrush(Color.FromArgb(255, 0x44, 0xa5, 0x48));
                 S1ZoneColor = MakeFrozenBrush(Color.FromArgb(75, 0x44, 0xa5, 0x48));
-                S1ZoneOpacity = 70; S1LineOpacity = 100; S1LineWidth = 2; S1LineStyle = DashStyleHelper.Solid; S1LabelAnchor = LabelAnchorPosition.Right;
+                S1ZoneOpacity = 40; S1LineOpacity = 40; S1LineWidth = 2; S1LineStyle = DashStyleHelper.Solid; S1LabelAnchor = LabelAnchorPosition.Right;
 
                 // S2 defaults
-                S2LabelOffset = 50; S2LabelSize = 8;
+                S2LabelOffset = -32; S2LabelSize = 8;
                 S2LabelBG = MakeFrozenBrush(Color.FromArgb(75, 0x63, 0x63, 0x63));
                 S2LabelTextColor = Brushes.White;
                 S2LineColor = MakeFrozenBrush(Color.FromArgb(255, 0x63, 0x63, 0x63));
@@ -173,37 +173,37 @@ namespace NinjaTrader.NinjaScript.Indicators.Friday13th
                 S3TimestampPosition = TextPosition.BottomLeft; S3LabelAnchor = LabelAnchorPosition.Right;
 
                 // S4 defaults
-                S4LabelOffset = 50; S4LabelSize = 8;
+                S4LabelOffset = -42; S4LabelSize = 8;
                 S4LabelBG = MakeFrozenBrush(Color.FromArgb(75, 0xdb, 0xdb, 0xdb));
-                S4LabelTextColor = Brushes.Black;
-                S4LineColor = Brushes.White; S4LineOpacity = 100; S4LineWidth = 1; S4LineStyle = DashStyleHelper.Solid; S4LabelAnchor = LabelAnchorPosition.Right;
+                S4LabelTextColor = Brushes.White;
+                S4LineColor = Brushes.White; S4LineOpacity = 100; S4LineWidth = 2; S4LineStyle = DashStyleHelper.Solid; S4LabelAnchor = LabelAnchorPosition.Right;
 
                 // S5 defaults
-                S5LabelOffset = 70; S5LabelSize = 8;
+                S5LabelOffset = -58; S5LabelSize = 8;
                 S5LabelBG = MakeFrozenBrush(Color.FromArgb(75, 0x21, 0x96, 0xf3));
                 S5LabelTextColor = Brushes.White;
                 S5LineColor = MakeFrozenBrush(Color.FromArgb(255, 0x64, 0xb5, 0xf6));
                 S5ZoneColor = MakeFrozenBrush(Color.FromArgb(75, 0x64, 0xb5, 0xf6));
-                S5ZoneOpacity = 50; S5LineOpacity = 100; S5LineWidth = 2; S5LineStyle = DashStyleHelper.Solid; S5LabelAnchor = LabelAnchorPosition.Right;
+                S5ZoneOpacity = 40; S5LineOpacity = 90; S5LineWidth = 2; S5LineStyle = DashStyleHelper.Solid; S5LabelAnchor = LabelAnchorPosition.Right;
 
                 // S6 defaults
-                S6LabelOffset = 50; S6LabelSize = 8;
+                S6LabelOffset = -74; S6LabelSize = 8;
                 S6LabelBG = MakeFrozenBrush(Color.FromArgb(75, 0x9c, 0x27, 0xb0));
                 S6LabelTextColor = Brushes.White;
                 S6LineColor = MakeFrozenBrush(Color.FromArgb(255, 0x9c, 0x27, 0xb0));
                 S6ZoneColor = MakeFrozenBrush(Color.FromArgb(75, 0x9c, 0x27, 0xb0));
-                S6ZoneOpacity = 70; S6LineOpacity = 100; S6LineWidth = 2; S6LineStyle = DashStyleHelper.Solid; S6LabelAnchor = LabelAnchorPosition.Right;
+                S6ZoneOpacity = 40; S6LineOpacity = 40; S6LineWidth = 2; S6LineStyle = DashStyleHelper.Solid; S6LabelAnchor = LabelAnchorPosition.Right;
 
                 // S7 defaults
-                S7LabelOffset = 50; S7LabelSize = 7;
+                S7LabelOffset = -88; S7LabelSize = 7;
                 S7LabelBG = MakeFrozenBrush(Color.FromArgb(75, 0x79, 0x55, 0x48));
                 S7LabelTextColor = Brushes.White;
                 S7LineColor = MakeFrozenBrush(Color.FromArgb(255, 0xff, 0x98, 0x00));
                 S7ZoneColor = MakeFrozenBrush(Color.FromArgb(75, 0xff, 0x98, 0x00));
-                S7ZoneOpacity = 70; S7LineOpacity = 100; S7LineWidth = 2; S7LineStyle = DashStyleHelper.Solid; S7LabelAnchor = LabelAnchorPosition.Right;
+                S7ZoneOpacity = 40; S7LineOpacity = 40; S7LineWidth = 1; S7LineStyle = DashStyleHelper.Solid; S7LabelAnchor = LabelAnchorPosition.Right;
 
                 // Zulu defaults
-                ZuluLabelOffset = 33; ZuluLabelSize = 8;
+                ZuluLabelOffset = 38; ZuluLabelSize = 8;
                 ZuluLabelBG = MakeFrozenBrush(Color.FromArgb(75, 0x9c, 0x27, 0xb0));
                 ZuluLabelTextColor = Brushes.White;
                 ZuluVolColor = MakeFrozenBrush(Color.FromArgb(255, 0xce, 0x93, 0xd8));
@@ -212,7 +212,7 @@ namespace NinjaTrader.NinjaScript.Indicators.Friday13th
                 ZuluLineOpacity = 100; ZuluLineWidth = 2; ZuluLineStyle = DashStyleHelper.Dash; ZuluLabelAnchor = LabelAnchorPosition.Right; ZuluShowLabels = true; ZuluShowLines = true;
 
                 // LIS defaults
-                LISLabelOffset = 27; LISLabelSize = 8;
+                LISLabelOffset = 32; LISLabelSize = 13;
                 LISLabelBG = MakeFrozenBrush(Color.FromArgb(50, 0xff, 0x98, 0x00));
                 LISLabelTextColor = Brushes.White;
                 LISLineColor = MakeFrozenBrush(Color.FromArgb(30, 0xff, 0x98, 0x00)); LISZoneColor = MakeFrozenBrush(Color.FromArgb(50, 0xff, 0x98, 0x00)); LISZoneOpacity = 80;
