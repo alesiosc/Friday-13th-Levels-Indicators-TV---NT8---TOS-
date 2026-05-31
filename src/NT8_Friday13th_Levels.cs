@@ -80,6 +80,8 @@ namespace NinjaTrader.NinjaScript.Indicators.Friday13th
             }
             return baseBrush;
         }
+
+
         // =====================================================================
         // Resolve chart instrument to canonical root symbol
         // =====================================================================
@@ -717,7 +719,7 @@ namespace NinjaTrader.NinjaScript.Indicators.Friday13th
                     {
                         string lblStr = lo.ToString("F2") + " - " + hi.ToString("F2");
                         var font = GetFont(S2LabelSize);
-                        Draw.Text(this, "S2LB_" + symbol + "_" + top.ToString("F2"), false, lblStr, GetLabelBarsAgoForAnchor(S2LabelAnchor, CurrentBar, S2LabelOffset), midp, 0, S2LabelTextColor, font, GetTextAlignment(S2LabelAnchor), S2LabelBG, Brushes.Transparent, 0);
+                        Draw.Text(this, "S2LB_" + symbol + "_" + top.ToString("F2"), false, lblStr, GetLabelBarsAgoForAnchor(S2LabelAnchor, CurrentBar, S2LabelOffset), midp, -14, S2LabelTextColor, font, GetTextAlignment(S2LabelAnchor), S2LabelBG, Brushes.Transparent, 0);
                         drawingTags.Add("S2LB_" + symbol + "_" + top.ToString("F2"));
                     }
                 }
@@ -736,7 +738,7 @@ namespace NinjaTrader.NinjaScript.Indicators.Friday13th
                     {
                         string lblStr = level.ToString("F2");
                         var font = GetFont(S2LabelSize);
-                        Draw.Text(this, "S2LB_" + symbol + "_" + level.ToString("F2"), false, lblStr, GetLabelBarsAgoForAnchor(S2LabelAnchor, CurrentBar, S2LabelOffset), level, 0, S2LabelTextColor, font, GetTextAlignment(S2LabelAnchor), S2LabelBG, Brushes.Transparent, 0);
+                        Draw.Text(this, "S2LB_" + symbol + "_" + level.ToString("F2"), false, lblStr, GetLabelBarsAgoForAnchor(S2LabelAnchor, CurrentBar, S2LabelOffset), level, -14, S2LabelTextColor, font, GetTextAlignment(S2LabelAnchor), S2LabelBG, Brushes.Transparent, 0);
                         drawingTags.Add("S2LB_" + symbol + "_" + level.ToString("F2"));
                     }
                 }
@@ -840,6 +842,20 @@ namespace NinjaTrader.NinjaScript.Indicators.Friday13th
                 if (!double.TryParse(prc, System.Globalization.NumberStyles.Any, fp, out level))
                     continue;
 
+                // Insert spaces before capital letters in labels (CamelCase → Camel Case)
+                string spacedLabel = "";
+                for (int i = 0; i < lbl.Length; i++)
+                {
+                    if (i > 0 && char.IsUpper(lbl[i]))
+                    {
+                        if (char.IsLower(lbl[i - 1]))
+                            spacedLabel += " ";
+                        else if (i + 1 < lbl.Length && char.IsLower(lbl[i + 1]) && char.IsUpper(lbl[i - 1]))
+                            spacedLabel += " ";
+                    }
+                    spacedLabel += lbl[i];
+                }
+
                 if (showZones)
                 {
                     string tag = "S4L_" + symbol + "_" + level.ToString("F2");
@@ -849,7 +865,7 @@ namespace NinjaTrader.NinjaScript.Indicators.Friday13th
                 if (showLabels)
                 {
                     var font = GetFont(S4LabelSize);
-                    Draw.Text(this, "S4LB_" + symbol + "_" + level.ToString("F2"), false, lbl, GetLabelBarsAgoForAnchor(S4LabelAnchor, CurrentBar, S4LabelOffset), level, -14, S4LabelTextColor, font, GetTextAlignment(S4LabelAnchor), S4LabelBG, Brushes.Transparent, 0);
+                    Draw.Text(this, "S4LB_" + symbol + "_" + level.ToString("F2"), false, spacedLabel, GetLabelBarsAgoForAnchor(S4LabelAnchor, CurrentBar, S4LabelOffset), level, -14, S4LabelTextColor, font, GetTextAlignment(S4LabelAnchor), S4LabelBG, Brushes.Transparent, 0);
                     drawingTags.Add("S4LB_" + symbol + "_" + level.ToString("F2"));
                 }
             }
